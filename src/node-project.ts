@@ -1,13 +1,13 @@
 import { PROJEN_DIR, PROJEN_RC } from './common';
-import { AutoMerge, DependabotOptions, GithubWorkflow, workflows } from './github';
+import { AutoMerge, DependabotOptions, TaskWorkflow } from './github';
 import { MergifyOptions } from './github/mergify';
-import { JobPermission } from './github/workflows-model';
+import { JobPermission, JobStep } from './github/workflows-model';
 import { IgnoreFile } from './ignore-file';
 import { Projenrc, ProjenrcOptions } from './javascript/projenrc';
 import { Jest, JestOptions } from './jest';
 import { License } from './license';
 import { NodePackage, NodePackageManager, NodePackageOptions } from './node-package';
-import { Project, ProjectOptions } from './project';
+import { GitHubProject, GitHubProjectOptions } from './project';
 import { Release, ReleaseProjectOptions, Publisher } from './release';
 import { Task } from './tasks';
 import { UpgradeDependencies, UpgradeDependenciesOptions, UpgradeDependenciesSchedule } from './upgrade-dependencies';
@@ -15,7 +15,7 @@ import { Version } from './version';
 
 const PROJEN_SCRIPT = 'projen';
 
-export interface NodeProjectOptions extends ProjectOptions, NodePackageOptions, ReleaseProjectOptions {
+export interface NodeProjectOptions extends GitHubProjectOptions, NodePackageOptions, ReleaseProjectOptions {
   /**
    * License copyright owner.
    *
@@ -224,7 +224,8 @@ export interface NodeProjectOptions extends ProjectOptions, NodePackageOptions, 
   readonly npmignoreEnabled?: boolean;
 
   /**
-   * Additional entries to .npmignore
+   * Additional entries to .npmignore.
+   * @deprecated - use `project.addPackageIgnore`
    */
   readonly npmignore?: string[];
 
@@ -240,7 +241,7 @@ export interface NodeProjectOptions extends ProjectOptions, NodePackageOptions, 
    *
    * @default - default content
    */
-  readonly pullRequestTemplateContents?: string;
+  readonly pullRequestTemplateContents?: string[];
 
   /**
    * Additional entries to .gitignore
@@ -263,7 +264,7 @@ export interface NodeProjectOptions extends ProjectOptions, NodePackageOptions, 
    * Generate (once) .projenrc.js (in JavaScript). Set to `false` in order to disable
    * .projenrc.js generation.
    *
-   * @default true
+   * @default - true if projenrcJson is false
    */
   readonly projenrcJs?: boolean;
 
@@ -292,7 +293,7 @@ export enum AutoRelease {
 /**
  * Node.js project
  */
-export class NodeProject extends Project {
+export class NodeProject extends GitHubProject {
   /**
    * API for managing the node package.
    */
@@ -342,7 +343,7 @@ export class NodeProject extends Project {
   /**
    * The PR build GitHub workflow. `undefined` if `buildWorkflow` is disabled.
    */
-  public readonly buildWorkflow?: GithubWorkflow;
+  public readonly buildWorkflow?: TaskWorkflow;
   public readonly buildWorkflowJobId?: string;
 
   /**
@@ -414,7 +415,7 @@ export class NodeProject extends Project {
     return this.package.manifest;
   }
 
-  private readonly workflowBootstrapSteps: workflows.JobStep[];
+  private readonly workflowBootstrapSteps: JobStep[];
 
   constructor(options: NodeProjectOptions) {
     super(options);
@@ -493,10 +494,9 @@ export class NodeProject extends Project {
 
 
     this.setScript(PROJEN_SCRIPT, this.package.projenCommand);
-    this.setScript('start', `${this.package.projenCommand} start`);
 
     this.npmignore?.exclude(`/${PROJEN_RC}`);
-    this.npmignore?.exclude(`/${PROJEN_DIR}`);
+    this.npmignore?.exclude(`/${PROJEN_DIR}/`);
     this.gitignore.include(`/${PROJEN_RC}`);
 
     const projen = options.projenDevDependency ?? true;
@@ -522,20 +522,42 @@ export class NodeProject extends Project {
       this.jest = new Jest(this, options.jestOptions);
     }
 
-    if (options.buildWorkflow ?? (this.parent ? false : true)) {
+    if (buildEnabled) {
       const branch = '${{ github.event.pull_request.head.ref }}';
       const repo = '${{ github.event.pull_request.head.repo.full_name }}';
       const buildJobId = 'build';
 
-      const updateRepo = new Array<any>();
+      const postBuildSteps = new Array<any>();
       const gitDiffStepId = 'git_diff';
       const hasChangesCondName = 'has_changes';
       const hasChanges = `steps.${gitDiffStepId}.outputs.${hasChangesCondName}`;
-      const repoFullName = 'github.event.pull_request.head.repo.full_name';
+
+      // disable anti-tamper if build workflow is mutable
+      const antitamperSteps = (!mutableBuilds ?? this.antitamper) ? [{
+        // anti-tamper check (fails if there were changes to committed files)
+        // this will identify any non-committed files generated during build (e.g. test snapshots)
+        name: 'Anti-tamper check',
+        run: 'git diff --ignore-space-at-eol --exit-code',
+      }] : [];
+
+      // run codecov if enabled or a secret token name is passed in
+      // AND jest must be configured
+      if ((options.codeCov || options.codeCovTokenSecret) && this.jest?.config) {
+        postBuildSteps.push({
+          name: 'Upload coverage to Codecov',
+          uses: 'codecov/codecov-action@v1',
+          with: options.codeCovTokenSecret ? {
+            token: `\${{ secrets.${options.codeCovTokenSecret} }}`,
+            directory: this.jest.config.coverageDirectory,
+          } : {
+            directory: this.jest.config.coverageDirectory,
+          },
+        });
+      }
 
       // use "git diff --exit code" to check if there were changes in the repo
       // and create a step output that will be used in subsequent steps.
-      updateRepo.push({
+      postBuildSteps.push({
         name: 'Check for changes',
         id: gitDiffStepId,
         run: `git diff --exit-code || echo "::set-output name=${hasChangesCondName}::true"`,
@@ -544,7 +566,7 @@ export class NodeProject extends Project {
       // only if we had changes, commit them and push to the repo note that for
       // forks, this will fail (because the workflow doesn't have permissions.
       // this indicates to users that they need to update their branch manually.
-      updateRepo.push({
+      postBuildSteps.push({
         if: hasChanges,
         name: 'Commit and push changes (if changed)',
         run: `git add . && git commit -m "chore: self mutation" && git push origin HEAD:${branch}`,
@@ -553,13 +575,13 @@ export class NodeProject extends Project {
       // if we pushed changes, we need to manually update the status check so
       // that the PR will be green (we won't get here for forks with updates
       // because the push would have failed).
-      updateRepo.push({
+      postBuildSteps.push({
         if: hasChanges,
         name: 'Update status check (if changed)',
         run: [
           'gh api',
           '-X POST',
-          `/repos/\${{ ${repoFullName} }}/check-runs`,
+          `/repos/${repo}/check-runs`,
           `-F name="${buildJobId}"`,
           '-F head_sha="$(git rev-parse HEAD)"',
           '-F status="completed"',
@@ -573,40 +595,54 @@ export class NodeProject extends Project {
       // if we pushed changes, we need to mark the current commit as failed, so
       // that GitHub auto-merge does not risk merging this commit before the
       // event for the new commit has registered.
-      updateRepo.push({
+      postBuildSteps.push({
         if: hasChanges,
-        name: 'Fail check if self mutation happened',
+        name: 'Cancel workflow (if changed)',
         run: [
-          'echo "Self-mutation happened on this pull request, so this commit is marked as having failed checks."',
-          'echo "The self-mutation commit has been marked as successful, and no further action should be necessary."',
-          'exit 1',
-        ].join('\n'),
+          'gh api',
+          '-X POST',
+          `/repos/${repo}/actions/runs/\${{ github.run_id }}/cancel`,
+        ].join(' '),
+        env: {
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
+        },
       });
 
-      const workflow = this.createBuildWorkflow('build', {
-        jobId: buildJobId,
-        trigger: {
-          pull_request: { },
-        },
-        permissions: {
-          checks: JobPermission.WRITE,
-          contents: JobPermission.WRITE,
-        },
-        checkoutWith: mutableBuilds ? {
-          ref: branch,
-          repository: repo,
-        } : undefined,
+      postBuildSteps.push(...antitamperSteps);
 
-        postSteps: updateRepo,
+      if (this.github) {
+        this.buildWorkflow = new TaskWorkflow(this.github, {
+          name: 'build',
+          jobId: buildJobId,
+          triggers: {
+            pullRequest: { },
+          },
+          env: {
+            CI: 'true', // will cause `NodeProject` to execute `yarn install` with `--frozen-lockfile`
+          },
+          permissions: {
+            checks: JobPermission.WRITE,
+            contents: JobPermission.WRITE,
+            actions: JobPermission.WRITE,
+          },
+          checkoutWith: mutableBuilds ? {
+            ref: branch,
+            repository: repo,
+          } : undefined,
 
-        antitamperDisabled: mutableBuilds, // <-- disable anti-tamper if build workflow is mutable
-        image: options.workflowContainerImage,
-        codeCov: options.codeCov ?? false,
-        codeCovTokenSecret: options.codeCovTokenSecret,
-      });
+          preBuildSteps: [
+            ...antitamperSteps,
+            ...this.installWorkflowSteps, // install dependencies steps
+          ],
 
-      this.buildWorkflow = workflow;
-      this.buildWorkflowJobId = buildJobId;
+          task: this.buildTask,
+
+          postBuildSteps,
+
+          container: options.workflowContainerImage ? { image: options.workflowContainerImage } : undefined,
+        });
+        this.buildWorkflowJobId = buildJobId;
+      }
     }
 
     const release = options.release ?? options.releaseWorkflow ?? (this.parent ? false : true);
@@ -651,9 +687,9 @@ export class NodeProject extends Project {
     }
 
     if (this.github?.mergify) {
-      this.autoMerge = new AutoMerge(this, {
-        mergify: this.github?.mergify,
+      this.autoMerge = new AutoMerge(this.github, {
         buildJob: this.buildWorkflowJobId,
+        ...options.autoMergeOptions,
       });
     }
 
@@ -717,7 +753,7 @@ export class NodeProject extends Project {
       this.github?.addPullRequestTemplate(...options.pullRequestTemplateContents ?? []);
     }
 
-    const projenrcJs = options.projenrcJs ?? true;
+    const projenrcJs = options.projenrcJs ?? !options.projenrcJson;
     if (projenrcJs) {
       new Projenrc(this, options.projenrcJsOptions);
     }
@@ -801,8 +837,8 @@ export class NodeProject extends Project {
     this.package.addKeywords(...keywords);
   }
 
-  public get installWorkflowSteps(): workflows.JobStep[] {
-    const install = new Array<workflows.JobStep>();
+  public get installWorkflowSteps(): JobStep[] {
+    const install = new Array<JobStep>();
 
     // first run the workflow bootstrap steps
     install.push(...this.workflowBootstrapSteps);
@@ -812,6 +848,14 @@ export class NodeProject extends Project {
         name: 'Setup Node.js',
         uses: 'actions/setup-node@v2.2.0',
         with: { 'node-version': this.nodeVersion },
+      });
+    }
+
+    if (this.package.packageManager === NodePackageManager.PNPM) {
+      install.push({
+        name: 'Setup pnpm',
+        uses: 'pnpm/action-setup@v2.0.1',
+        with: { version: '6.14.7' }, // current latest. Should probably become tunable.
       });
     }
 
@@ -950,184 +994,15 @@ export class NodeProject extends Project {
     );
   }
 
-  private createBuildWorkflow(name: string, options: NodeBuildWorkflowOptions): GithubWorkflow {
-    const buildJobId = options.jobId;
-
-    const github = this.github;
-    if (!github) { throw new Error('no github support'); }
-
-    const workflow = github.addWorkflow(name);
-
-    if (options.trigger) {
-      if (options.trigger.issue_comment) {
-        throw new Error('"issue_comment" should not be used as a trigger due to a security issue');
-      }
-
-      workflow.on(options.trigger);
-    }
-
-    workflow.on({
-      workflowDispatch: {}, // allow manual triggering
-    });
-
-    const condition = options.condition ? { if: options.condition } : {};
-    const preBuildSteps = options.preBuildSteps ?? [];
-    const preCheckoutSteps = options.preCheckoutSteps ?? [];
-    const checkoutWith = options.checkoutWith ? { with: options.checkoutWith } : {};
-    const postSteps = options.postSteps ?? [];
-
-    const antitamperSteps = (options.antitamperDisabled || !this.antitamper) ? [] : [{
-      name: 'Anti-tamper check',
-      run: 'git diff --ignore-space-at-eol --exit-code',
-    }];
-
-    const job: Mutable<workflows.Job> = {
-      runsOn: 'ubuntu-latest',
-      env: {
-        CI: 'true', // will cause `NodeProject` to execute `yarn install` with `--frozen-lockfile`
-        ...options.env ?? {},
-      },
-      permissions: options.permissions,
-      ...condition,
-      steps: [
-        ...preCheckoutSteps,
-
-        // check out sources.
-        {
-          name: 'Checkout',
-          uses: 'actions/checkout@v2',
-          ...checkoutWith,
-        },
-
-        // install dependencies
-        ...this.installWorkflowSteps,
-
-        // perform an anti-tamper check immediately after we run projen.
-        ...antitamperSteps,
-
-        // sets git identity so we can push later
-        {
-          name: 'Set git identity',
-          run: [
-            'git config user.name "Automation"',
-            'git config user.email "github-actions@github.com"',
-          ].join('\n'),
-        },
-
-        // if there are changes, creates a bump commit
-
-        ...preBuildSteps,
-
-        // build (compile + test)
-        {
-          name: 'Build',
-          run: this.runTaskCommand(this.buildTask),
-        },
-
-        // run codecov if enabled or a secret token name is passed in
-        // AND jest must be configured
-        ...(options.codeCov || options.codeCovTokenSecret) && this.jest?.config ? [{
-          name: 'Upload coverage to Codecov',
-          uses: 'codecov/codecov-action@v1',
-          with: options.codeCovTokenSecret ? {
-            token: `\${{ secrets.${options.codeCovTokenSecret} }}`,
-            directory: this.jest.config.coverageDirectory,
-          } : {
-            directory: this.jest.config.coverageDirectory,
-          },
-        }] : [],
-
-        ...postSteps,
-
-        // anti-tamper check (fails if there were changes to committed files)
-        // this will identify any non-committed files generated during build (e.g. test snapshots)
-        ...antitamperSteps,
-      ],
-    };
-
-    if (options.image) {
-      job.container = { image: options.image };
-    }
-
-    workflow.addJobs({ [buildJobId]: job });
-
-    return workflow;
-  }
-
   /**
- * Returns the shell command to execute in order to run a task. If
- * npmTaskExecution is set to PROJEN, the command will be `npx projen TASK`.
- * If it is set to SHELL, the command will be `yarn run TASK` (or `npm run
- * TASK`).
+ * Returns the shell command to execute in order to run a task. This will
+ * typically be `npx projen TASK`.
  *
  * @param task The task for which the command is required
  */
   public runTaskCommand(task: Task) {
     return `${this.package.projenCommand} ${task.name}`;
   }
-}
-
-interface NodeBuildWorkflowOptions {
-  /**
-   * The primary job id.
-   */
-  readonly jobId: string;
-
-  /**
-   * @default - default image
-   */
-  readonly image?: string;
-
-  /**
-   * Adds an "if" condition to the workflow.
-   */
-  readonly condition?: any;
-
-  /**
-   * What should trigger the workflow?
-   *
-   * @default - by default workflows can only be triggered by manually.
-   */
-  readonly trigger?: { [event: string]: any };
-
-  /**
-   * Bump a new version for this build.
-   * @default false
-   */
-  // readonly bump?: boolean;
-
-  /**
-   * Run codecoverage step
-   * Send to https://codecov.io/
-   * @default false
-   */
-  readonly codeCov?: boolean;
-
-  /**
-   * The secret name for the https://codecov.io/ token
-   */
-  readonly codeCovTokenSecret?: string;
-
-  readonly preBuildSteps?: any[];
-  readonly preCheckoutSteps?: any[];
-  readonly postSteps?: any[];
-  readonly checkoutWith?: { [key: string]: any };
-
-  /**
-   * Disables anti-tamper checks in the workflow.
-   */
-  readonly antitamperDisabled?: boolean;
-
-  /**
-   * Workflow environment variables.
-   * @default {}
-   */
-  readonly env?: { [name: string]: string };
-
-  /**
-   * Permissions for the build job.
-   */
-  readonly permissions: workflows.JobPermissions;
 }
 
 export interface NodeWorkflowSteps {
@@ -1177,5 +1052,3 @@ export class DependenciesUpgradeMechanism {
     this.binder(project);
   }
 }
-
-type Mutable<T> = { -readonly [P in keyof T]: T[P] };

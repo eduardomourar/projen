@@ -1,13 +1,11 @@
-import * as os from 'os';
 import * as path from 'path';
-import * as vm from 'vm';
 import * as fs from 'fs-extra';
 import * as yargs from 'yargs';
 import * as inventory from '../../inventory';
-import { renderJavaScriptOptions } from '../../javascript/render-options';
 import * as logging from '../../logging';
 import { NewProjectOptionHints } from '../../option-hints';
-import { exec } from '../../util';
+import { exec, isTruthy } from '../../util';
+import { createProject } from '../create';
 import { tryProcessMacro } from '../macros';
 
 class Command implements yargs.CommandModule {
@@ -18,7 +16,7 @@ class Command implements yargs.CommandModule {
     args.positional('PROJECT-TYPE-NAME', { describe: 'optional only when --from is used and there is a single project type in the external module', type: 'string' });
     args.option('synth', { type: 'boolean', default: true, desc: 'Synthesize after creating .projenrc.js' });
     args.option('comments', { type: 'boolean', default: true, desc: 'Include commented out options in .projenrc.js (use --no-comments to disable)' });
-    args.option('from', { type: 'string', alias: 'f', desc: 'External jsii npm module to create project from. Supports any package spec supported by yarn (such as "my-pack@^2.0")' });
+    args.option('from', { type: 'string', alias: 'f', desc: 'External jsii npm module to create project from. Supports any package spec supported by npm (such as "my-pack@^2.0")' });
     args.option('git', { type: 'boolean', default: true, desc: 'Run `git init` and create an initial commit (use --no-git to disable)' });
     args.example('projen new awscdk-app-ts', 'Creates a new project of built-in type "awscdk-app-ts"');
     args.example('projen new --from projen-vue@^2', 'Creates a new project from an external module "projen-vue" with the specified version');
@@ -90,86 +88,6 @@ class Command implements yargs.CommandModule {
   }
 }
 
-interface CreateProjectOptions {
-  /**
-   * Project directory.
-   */
-  dir: string;
-
-  /**
-   * Project type from the inventory.
-   */
-  type: inventory.ProjectType;
-
-  /**
-   * Option values.
-   */
-  params: Record<string, string>;
-
-  /**
-   * Should we render commented-out default options in .projerc.js file?
-   */
-  comments: NewProjectOptionHints;
-
-  /**
-   * Should we call `project.synth()` or instantiate the project (could still
-   * have side-effects) and render the .projenrc file.
-   */
-  synth: boolean;
-
-  /**
-   * Should we execute post synthesis hooks? (usually package manager install).
-   */
-  post: boolean;
-}
-
-/**
- * Creates a new project with defaults.
- *
- * This function creates the project type in-process (with in VM) and calls
- * `.synth()` on it (if `options.synth` is not `false`).
- *
- * At the moment, it also generates a `.projenrc.js` file with the same code
- * that was just executed. In the future, this will also be done by the project
- * type, so we can easily support multiple languages of projenrc.
- */
-function createProject(opts: CreateProjectOptions) {
-  // Default project resolution location
-  let mod = '../../index';
-
-  // External projects need to load the module from the modules directory
-  if (opts.type.moduleName !== 'projen') {
-    try {
-      mod = path.dirname(
-        require.resolve(path.join(opts.type.moduleName, 'package.json'), { paths: [process.cwd()] }),
-      );
-    } catch (err) {
-      throw new Error(`External project module '${opts.type.moduleName}' could not be resolved.`);
-    }
-  }
-
-  // pass the FQN of the project type to the project initializer so it can
-  // generate the projenrc file.
-  const { renderedOptions } = renderJavaScriptOptions({
-    bootstrap: true,
-    comments: opts.comments,
-    type: opts.type,
-    args: opts.params,
-  });
-
-  const newProjectCode = `const project = new ${opts.type.typename}(${renderedOptions});`;
-
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const module = require(mod);
-  const ctx = vm.createContext(module);
-
-  process.env.PROJEN_DISABLE_POST = (!opts.post).toString();
-  vm.runInContext([
-    newProjectCode,
-    opts.synth ? 'project.synth();' : '',
-  ].join('\n'), ctx);
-}
-
 
 /**
  * Given a value from "@default", processes macros and returns a stringified
@@ -227,22 +145,28 @@ function commandLineToProps(cwd: string, type: inventory.ProjectType, argv: Reco
  * @param args Command line arguments (incl. project type)
  */
 async function newProjectFromModule(baseDir: string, spec: string, args: any) {
-  const installCommand = `yarn add --modules-folder=${baseDir}/node_modules --silent --no-lockfile --dev`;
+  const projenVersion = args.projenVersion ?? 'latest';
+  const installCommand = renderInstallCommand(baseDir, `projen@${projenVersion}`);
   if (args.projenVersion) {
-    exec(`${installCommand} projen@${args.projenVersion}`, { cwd: baseDir });
+    exec(installCommand, { cwd: baseDir });
   } else {
     // do not overwrite existing installation
-    exec(`yarn list --depth=0 --pattern projen || ${installCommand} projen`, { cwd: baseDir });
+    exec(`npm ls --prefix=${baseDir} --depth=0 --pattern projen || ${installCommand}`, { cwd: baseDir });
   }
 
-  const specDependencyInfo = yarnAdd(baseDir, spec);
+  const moduleName = installPackage(baseDir, spec);
 
-  // collect projects by looking up all .jsii modules in `node_modules`.
-  const modulesDir = path.join(baseDir, 'node_modules');
-  const modules = fs.readdirSync(modulesDir).map(file => path.join(modulesDir, file));
+  // Find the just installed package and discover the rest recursively from this package folder
+  const moduleDir = path.dirname(require.resolve(`${moduleName}/.jsii`, {
+    paths: [
+      baseDir,
+    ],
+  }));
+
+  // Only leave projects from the main (requested) package
   const projects = inventory
-    .discover(...modules)
-    .filter(x => x.moduleName !== 'projen'); // filter built-in project types
+    .discover(moduleDir)
+    .filter(x => x.moduleName === moduleName); // Only list project types from the requested 'from' module
 
   if (projects.length < 1) {
     throw new Error(`No projects found after installing ${spec}. The module must export at least one class which extends projen.Project`);
@@ -268,6 +192,15 @@ async function newProjectFromModule(baseDir: string, spec: string, args: any) {
     }
 
     if (args[option.name] !== undefined) {
+      if (option.type === 'number') {
+        args[option.name] = parseInt(args[option.name]);
+        args[option.switch] = args[option.name];
+      } else if (option.type === 'boolean') {
+        const raw = args[option.name];
+        const safe = typeof raw === 'string' ? isTruthy(raw) : raw;
+        args[option.name] = safe;
+        args[option.switch] = safe;
+      }
       continue; // do not overwrite passed arguments
     }
 
@@ -282,7 +215,7 @@ async function newProjectFromModule(baseDir: string, spec: string, args: any) {
 
   // include a dev dependency for the external module
   await newProject(baseDir, type, args, {
-    devDeps: [specDependencyInfo],
+    devDeps: [spec],
   });
 }
 
@@ -320,42 +253,53 @@ async function newProject(baseDir: string, type: inventory.ProjectType, args: an
 }
 
 /**
- * Installs the npm module (through `yarn add`) to node_modules under `projectDir`.
- * @param spec The npm package spec (e.g. foo@^1.2)
- * @returns String info for the project devDeps (e.g. foo@^1.2 or foo@/var/folders/8k/qcw0ls5pv_ph0000gn/T/projen-RYurCw/pkg.tgz)
+ * Installs the npm module (through `npm install`) to node_modules under `projectDir`.
+ * @param spec The npm package spec (e.g. `foo@^1.2` or `foo@/var/folders/8k/qcw0ls5pv_ph0000gn/T/projen-RYurCw/pkg.tgz`)
+ * @returns The installed package name (e.g. `@foo/bar`)
  */
-function yarnAdd(baseDir: string, spec: string): string {
+function installPackage(baseDir: string, spec: string): string {
   const packageJsonPath = path.join(baseDir, 'package.json');
   const packageJsonExisted = fs.existsSync(packageJsonPath);
-  let dependencyInfo = spec;
 
-  // workaround: yarn fails to extract tgz if it contains '@' in the name, so we
-  // create a temp copy called pkg.tgz and install from there.
-  // see: https://github.com/yarnpkg/yarn/issues/6339
-  if (spec.endsWith('.tgz') && spec.includes('@')) {
-    // if user passes in a file spec then we have to specify the project name and the package location
-    // (e.g foo@/var/folders/8k/qcw0ls5pv_ph0000gn/T/projen-RYurCw/pkg.tgz)
-    const moduleName = spec.split('/').slice(-1)[0].trim().split('@')[0].trim(); // Example: ./cdk-project/dist/js/cdk-project@1.0.0.jsii.tgz
-
-    const packageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'projen-'));
-    const copy = path.join(packageDir, 'pkg.tgz');
-    fs.copyFileSync(spec, copy);
-
-    spec = copy;
-
-    dependencyInfo = `${moduleName}@${spec}`;
+  if (!packageJsonExisted) {
+    // Make sure we have a package.json to read from later
+    exec('npm init --yes', { cwd: baseDir });
   }
 
   logging.info(`installing external module ${spec}...`);
-  exec(`yarn add --modules-folder=${baseDir}/node_modules --silent --no-lockfile --dev ${spec}`, { cwd: baseDir });
+  exec(renderInstallCommand(baseDir, spec), { cwd: baseDir });
 
-  // if package.json did not exist before calling yarn add, we should remove it
+  // Get the true installed package name
+  const packageJson = fs.readJsonSync(packageJsonPath);
+  const packageName = Object.keys(packageJson.devDependencies).find(name => name !== 'projen');
+
+  if (!packageName) {
+    throw new Error(`Unable to resolve package name from spec ${spec}`);
+  }
+
+  // if package.json did not exist before calling `npm install`, we should remove it
   // so we can start off clean.
   if (!packageJsonExisted) {
     fs.removeSync(packageJsonPath);
   }
 
-  return dependencyInfo;
+  return packageName;
+}
+
+/**
+ * Render a command to install an npm package.
+ *
+ * Engine checks are ignorred at this point so that the module can be installed
+ * regardless of the environment. This was needed to unblock the upgrade of the
+ * minimum node version of projen, but also okay generally because engine checks
+ * will be performed later and for all eternety.
+ *
+ * @param dir Base directory
+ * @param module The module to install (e.g. foo@^1.2)
+ * @returns The string that includes the install command ("npm install ...")
+ */
+function renderInstallCommand(dir: string, module: string): string {
+  return `npm install --save-dev -f --no-package-lock --prefix=${dir} ${module}`;
 }
 
 module.exports = new Command();

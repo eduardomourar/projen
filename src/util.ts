@@ -199,7 +199,7 @@ export function deepMerge(objects: Array<Obj<any> | undefined>, destructive: boo
       if (isObject(value)) {
         // if the value at the target is not an object, override it with an
         // object so we can continue the recursion
-        if (!isObject(target[key])) {
+        if (typeof(target[key]) !== 'object') {
           target[key] = value;
         }
         mergeOne(target[key], value);
@@ -208,7 +208,7 @@ export function deepMerge(objects: Array<Obj<any> | undefined>, destructive: boo
         // eventual value we assigned is `undefined`, and there are no
         // sibling concrete values alongside, so we can delete this tree.
         const output = target[key];
-        if (isObject(output) && Object.keys(output).length === 0 && destructive) {
+        if (typeof(output) === 'object' && Object.keys(output).length === 0 && destructive) {
           delete target[key];
         }
       } else if (value === undefined && destructive) {
@@ -258,4 +258,26 @@ export function sorted<T>(x: T) {
 
 export function formatAsPythonModule(name: string) {
   return name.replace(/-/g, '_').replace(/\./g, '_');
+}
+
+export function kebabCaseKeys<T = unknown>(obj: T, recursive = true): T {
+  if (typeof obj !== 'object' || obj == null) {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    if (recursive) {
+      obj = obj.map((v) => kebabCaseKeys(v, recursive)) as any;
+    }
+    return obj;
+  }
+
+  const result: Record<string, unknown> = {};
+  for (let [k, v] of Object.entries(obj)) {
+    if (recursive) {
+      v = kebabCaseKeys(v, recursive);
+    }
+    result[decamelize(k).replace(/_/mg, '-')] = v;
+  }
+  return result as any;
 }

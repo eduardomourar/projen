@@ -24,7 +24,7 @@ const publisher = new Publisher(project, {
 });
 ```
 
-`workflow` is a `GitHubWorkflow` with at least one job (in this case named `my-build-job`) whichj is responsile to build the code and upload a GitHub workflows artifact (named `dist` in this case) which will then be consumed by the publishing jobs.
+`workflow` is a `GithubWorkflow` with at least one job (in this case named `my-build-job`) which is responsile to build the code and upload a GitHub workflows artifact (named `dist` in this case) which will then be consumed by the publishing jobs.
 
 This component is opinionated about the subdirectory structure of the artifact:
 
@@ -48,3 +48,44 @@ publisher.publishToMaven(/* options */);
 
 See API reference for options for each target.
 
+## Publishing to GitHub Packages
+
+Some targets come with dynamic defaults that support GitHub Packages.
+If the respective registry URL is detected to be GitHub, other relevant options will automatically be set to fitting values.
+It will also ensure that the workflow token has write permissions for Packages.
+
+**npm**
+```ts
+publisher.publishToNpm({
+  registry: 'npm.pkg.github.com'
+  // also sets npmTokenSecret
+})
+```
+
+**Maven**
+```ts
+publisher.publishToMaven({
+  mavenRepositoryUrl: 'https://maven.pkg.github.com/USER/REPO'
+  // also sets mavenServerId, mavenUsername, mavenPassword
+  // disables mavenGpgPrivateKeySecret, mavenGpgPrivateKeyPassphrase, mavenStagingProfileId
+})
+```
+
+## Handling Failures
+
+You can instruct the publisher to create GitHub issues for publish failures:
+
+```ts
+const publisher = new Publisher(project, {
+  workflow: releaseWorkflow,
+  buildJobId: 'my-build-job',
+  artifactName: 'dist',
+  issueOnFailure: true,
+  failureIssueLabel: 'failed-release'
+});
+```
+
+This will create an issue labeled with the `failed-release` label for every individual failed publish task.
+For example, if Nuget publishing failed for a specific version, it will create an issue titled *Publishing v1.0.4 to Nuget gallery failed*.
+
+This can be helpful to keep track of failed releases as well as integrate with third-party ticketing systems by querying issues labeled with `failed-release`.

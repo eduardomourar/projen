@@ -2,27 +2,64 @@
 import decamelize = require('decamelize');
 
 import { Component } from '../component';
+import { kebabCaseKeys } from '../util';
 import { YamlFile } from '../yaml';
 import { GitHub } from './github';
 
 import * as workflows from './workflows-model';
 
+/**
+ * Options for `GithubWorkflow`.
+ */
+export interface GithubWorkflowOptions {
+  /**
+   * Force the creation of the workflow even if `workflows` is disabled in `GitHub`.
+   *
+   * @default false
+   */
+  readonly force?: boolean;
+}
+
+/**
+ * Workflow for GitHub.
+ *
+ * A workflow is a configurable automated process made up of one or more jobs.
+ *
+ * @see https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions
+ */
 export class GithubWorkflow extends Component {
+  /**
+   * The name of the workflow.
+   */
   public readonly name: string;
-  public readonly file: YamlFile;
+
+  /**
+   * The workflow YAML file.
+   */
+  public readonly file: YamlFile | undefined;
 
   private events: workflows.Triggers = { };
   private jobs: Record<string, workflows.Job> = { };
 
-  constructor(github: GitHub, name: string) {
+  constructor(github: GitHub, name: string, options: GithubWorkflowOptions = {}) {
     super(github.project);
 
     this.name = name;
-    this.file = new YamlFile(this.project, `.github/workflows/${name.toLocaleLowerCase()}.yml`, {
-      obj: () => this.renderWorkflow(),
-    });
+
+    const workflowsEnabled = github.workflows || options.force;
+
+    if (workflowsEnabled) {
+      this.file = new YamlFile(this.project, `.github/workflows/${name.toLocaleLowerCase()}.yml`, {
+        obj: () => this.renderWorkflow(),
+      });
+    }
   }
 
+  /**
+   * Add events to triggers the workflow.
+   *
+   * @param events The event(s) to trigger the workflow.
+   */
   public on(events: workflows.Triggers) {
     this.events = {
       ...this.events,
@@ -30,6 +67,11 @@ export class GithubWorkflow extends Component {
     };
   }
 
+  /**
+   * Add jobs to the workflow.
+   *
+   * @param jobs Jobs to add.
+   */
   public addJobs(jobs: Record<string, workflows.Job>) {
     // verify that job has a "permissions" statement to ensure workflow can
     // operate in repos with default tokens set to readonly
@@ -69,28 +111,6 @@ function snakeCaseKeys<T = unknown>(obj: T): T {
       v = snakeCaseKeys(v);
     }
     result[decamelize(k)] = v;
-  }
-  return result as any;
-}
-
-function kebabCaseKeys<T = unknown>(obj: T, recursive = true): T {
-  if (typeof obj !== 'object' || obj == null) {
-    return obj;
-  }
-
-  if (Array.isArray(obj)) {
-    if (recursive) {
-      obj = obj.map((v) => kebabCaseKeys(v, recursive)) as any;
-    }
-    return obj;
-  }
-
-  const result: Record<string, unknown> = {};
-  for (let [k, v] of Object.entries(obj)) {
-    if (recursive) {
-      v = kebabCaseKeys(v, recursive);
-    }
-    result[decamelize(k).replace(/_/mg, '-')] = v;
   }
   return result as any;
 }

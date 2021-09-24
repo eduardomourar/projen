@@ -55,20 +55,25 @@ const project = new JsiiProject({
   },
 
   publishToMaven: {
-    javaPackage: 'org.projen',
-    mavenGroupId: 'com.github.eladb',
+    javaPackage: 'io.github.cdklabs.projen',
+    mavenGroupId: 'io.github.cdklabs',
     mavenArtifactId: 'projen',
+    mavenEndpoint: 'https://s01.oss.sonatype.org',
   },
 
   publishToPypi: {
     distName: 'projen',
     module: 'projen',
   },
+  releaseFailureIssue: true,
 
   // Disabled due to cycles between main module and submodules
   // publishToGo: {
   //   moduleName: 'github.com/projen/projen-go',
   // },
+
+  autoApproveUpgrades: true,
+  autoApproveOptions: { allowedUsernames: ['cdklabs-automation'], secret: 'GITHUB_TOKEN' },
 });
 
 // this script is what we use as the projen command in this project
@@ -85,6 +90,7 @@ new TextFile(project, 'projen.bash', {
     'exec bin/projen $@',
   ],
 });
+project.npmignore.exclude('/projen.bash');
 
 project.addExcludeFromCleanup('src/__tests__/**');
 project.gitignore.include('templates/**');
@@ -105,6 +111,7 @@ new JsonFile(project, '.markdownlint.json', {
     },
   },
 });
+project.npmignore.exclude('/.markdownlint.json');
 
 project.vscode.launchConfiguration.addConfiguration({
   type: 'pwa-node',
@@ -127,7 +134,7 @@ project.github.mergify.addRule({
     },
   },
   conditions: [
-    'author~=^(eladb)$',
+    'author~=^(eladb|Chriscbr)$',
     'label!=contribution/core',
   ],
 });
@@ -143,9 +150,20 @@ const setup = project.addTask('devenv:setup');
 setup.exec('yarn install');
 setup.spawn(project.buildTask);
 project.devContainer.addTasks(setup);
+project.npmignore.exclude('/.devcontainer.json');
 
 project.addTask('contributors:update', {
   exec: 'all-contributors check | grep "Missing contributors" -A 1 | tail -n1 | sed -e "s/,//g" | xargs -n1 | grep -v "\[bot\]" | xargs -n1 -I{} all-contributors add {} code',
 });
+project.npmignore.exclude('/.all-contributorsrc');
+
+project.npmignore.exclude('/scripts/');
+project.npmignore.exclude('/ARCHITECTURE.md');
+project.npmignore.exclude('/CODE_OF_CONDUCT.md');
+project.npmignore.exclude('/CONTRIBUTING.md');
+project.npmignore.exclude('/VISION.md');
+project.npmignore.exclude('/SECURITY.md');
+project.npmignore.exclude('/.gitattributes');
+project.npmignore.exclude('/.gitpod.yml');
 
 project.synth();

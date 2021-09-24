@@ -39,6 +39,27 @@ test('with major version filter', () => {
   expect(outdir).toMatchSnapshot();
 });
 
+test('with release tag prefix', () => {
+  // GIVEN
+  const project = new TestProject();
+  const task = project.addTask('build');
+
+  // WHEN
+  new Release(project, {
+    task: task,
+    versionFile: 'version.json',
+    branch: '10.x',
+    majorVersion: 10,
+    releaseTagPrefix: 'prefix/',
+    releaseWorkflowName: 'release',
+  });
+
+  // THEN
+  const outdir = synthSnapshot(project);
+  expect(outdir['.github/workflows/release.yml']).toBeDefined();
+  expect(outdir).toMatchSnapshot();
+});
+
 test('addBranch() can be used for additional release branches', () => {
   // GIVEN
   const project = new TestProject();
@@ -123,18 +144,24 @@ test('publishers are added as jobs to all release workflows', () => {
   expect(wf1).toMatchObject({
     on: { push: { branches: ['main'] } },
     jobs: {
-      release: { },
+      release: {
+        steps: expect.any(Array),
+      },
       release_npm: { },
     },
   });
+  expect(wf1.jobs.release.steps.length).toBe(5);
   const wf2 = YAML.parse(outdir['.github/workflows/release-2.x.yml']);
   expect(wf2).toMatchObject({
     on: { push: { branches: ['2.x'] } },
     jobs: {
-      release: { },
+      release: {
+        steps: expect.any(Array),
+      },
       release_npm: { },
     },
   });
+  expect(wf2.jobs.release.steps.length).toBe(5);
 });
 
 test('addJobs() can be used to add arbitrary jobs to the release workflows', () => {
@@ -229,6 +256,28 @@ test('releaseBranches can be use to define additional branches', () => {
   expect(outdir).toMatchSnapshot();
 });
 
+test('releaseBranches can be defined with different tag prefixes to the same major version', () => {
+  // GIVEN
+  const project = new TestProject();
+  const task = project.addTask('build');
+
+  // WHEN
+  new Release(project, {
+    task: task,
+    versionFile: 'goo.json',
+    branch: 'firefox',
+    majorVersion: 1,
+    releaseWorkflowName: 'release-firefox',
+    releaseTagPrefix: 'firefox/',
+    releaseBranches: {
+      safari: { majorVersion: 1, tagPrefix: 'safari/' },
+    },
+  });
+
+  const outdir = synthSnapshot(project);
+  expect(outdir).toMatchSnapshot();
+});
+
 test('releaseBranches as an array throws an error since type was changed', () => {
   // GIVEN
   const project = new TestProject();
@@ -262,4 +311,26 @@ test('github packages are supported by npm', () => {
   // THEN
   const outdir = synthSnapshot(project);
   expect(outdir).toMatchSnapshot();
+});
+
+test('can enable issue creation on failed releases with a custom label', () => {
+
+  const project = new TestProject();
+  const task = project.addTask('build');
+  const release = new Release(project, {
+    task: task,
+    versionFile: 'version.json',
+    branch: 'main',
+    releaseFailureIssue: true,
+    releaseFailureIssueLabel: 'custom-label',
+  });
+
+  // WHEN
+  release.publisher.publishToNpm({
+    registry: 'npm.pkg.github.com',
+  });
+
+  const outdir = synthSnapshot(project);
+  expect(outdir['.github/workflows/release.yml']).toMatchSnapshot();
+
 });
