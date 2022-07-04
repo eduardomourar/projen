@@ -15,6 +15,7 @@
  * - RELEASE_TAG_PREFIX: (optional) a prefix to apply to the release tag
  *
  */
+import * as logging from "../logging";
 import { bump, BumpOptions } from "./bump-version";
 
 const versionFile = process.env.OUTFILE;
@@ -44,7 +45,7 @@ if (!releaseTagFile) {
 
 const majorVersion =
   major == null || major === "" ? undefined : parseInt(major);
-if (majorVersion === NaN) {
+if (Number.isNaN(majorVersion)) {
   throw new Error(`MAJOR must be a number: ${majorVersion}`);
 }
 
@@ -59,6 +60,7 @@ const opts: BumpOptions = {
   // doesn't work with long customization
   versionrcOptions: JSON.parse(versionrcOptions ?? "{}"),
 };
+logging.debug(opts);
 
 bump(process.cwd(), opts).catch((e: Error) => {
   console.log(e.stack);

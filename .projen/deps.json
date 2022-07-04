@@ -23,7 +23,7 @@
     },
     {
       "name": "@types/node",
-      "version": "^12",
+      "version": "^14",
       "type": "build"
     },
     {
@@ -46,6 +46,10 @@
     },
     {
       "name": "all-contributors-cli",
+      "type": "build"
+    },
+    {
+      "name": "esbuild",
       "type": "build"
     },
     {
@@ -95,7 +99,15 @@
       "type": "build"
     },
     {
+      "name": "jsii-pacmak",
+      "type": "build"
+    },
+    {
       "name": "json-schema",
+      "type": "build"
+    },
+    {
+      "name": "json5",
       "type": "build"
     },
     {
@@ -167,6 +179,7 @@
     },
     {
       "name": "yaml",
+      "version": "2.0.0",
       "type": "bundled"
     },
     {

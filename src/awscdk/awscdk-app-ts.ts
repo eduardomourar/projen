@@ -32,6 +32,32 @@ export interface AwsCdkTypeScriptAppOptions
   readonly lambdaAutoDiscover?: boolean;
 
   /**
+   * Automatically adds an `cloudfront.experimental.EdgeFunction` for each
+   * `.edge-lambda.ts` handler in your source tree. If this is disabled, you can
+   * manually add an `awscdk.AutoDiscover` component to your project.
+   *
+   * @default true
+   */
+  readonly edgeLambdaAutoDiscover?: boolean;
+
+  /**
+   * Automatically adds an `awscdk.LambdaExtension` for each `.lambda-extension.ts`
+   * entrypoint in your source tree. If this is disabled, you can manually add an
+   * `awscdk.AutoDiscover` component to your project
+   *
+   * @default true
+   */
+  readonly lambdaExtensionAutoDiscover?: boolean;
+
+  /**
+   * Automatically discovers and creates integration tests for each `.integ.ts`
+   * file in under your test directory.
+   *
+   * @default true
+   */
+  readonly integrationTestAutoDiscover?: boolean;
+
+  /**
    * Common options for all AWS Lambda functions.
    *
    * @default - default options
@@ -134,21 +160,22 @@ export class AwsCdkTypeScriptApp extends TypeScriptAppProject {
       this.tsconfig.exclude.push(this.cdkConfig.cdkout);
     }
 
-    this.addDevDeps("ts-node@^9");
+    this.addDevDeps("ts-node");
     if (options.sampleCode ?? true) {
       new SampleCode(this, this.cdkDeps.cdkMajorVersion);
     }
 
-    const lambdaAutoDiscover = options.lambdaAutoDiscover ?? true;
-    if (lambdaAutoDiscover) {
-      new AutoDiscover(this, {
-        srcdir: this.srcdir,
-        testdir: this.testdir,
-        lambdaOptions: options.lambdaOptions,
-        tsconfigPath: this.tsconfigDev.fileName,
-        cdkDeps: this.cdkDeps,
-      });
-    }
+    new AutoDiscover(this, {
+      srcdir: this.srcdir,
+      testdir: this.testdir,
+      lambdaOptions: options.lambdaOptions,
+      tsconfigPath: this.tsconfigDev.fileName,
+      cdkDeps: this.cdkDeps,
+      lambdaAutoDiscover: options.lambdaAutoDiscover ?? true,
+      edgeLambdaAutoDiscover: options.edgeLambdaAutoDiscover ?? true,
+      lambdaExtensionAutoDiscover: options.lambdaExtensionAutoDiscover ?? true,
+      integrationTestAutoDiscover: options.integrationTestAutoDiscover ?? true,
+    });
   }
 
   /**
@@ -209,8 +236,8 @@ const devEnv = {
 
 const app = new App();
 
-new MyStack(app, 'my-stack-dev', { env: devEnv });
-// new MyStack(app, 'my-stack-prod', { env: prodEnv });
+new MyStack(app, '${this.project.name}-dev', { env: devEnv });
+// new MyStack(app, '${this.project.name}-prod', { env: prodEnv });
 
 app.synth();`;
 

@@ -2,6 +2,8 @@ import * as path from "path";
 import * as fs from "fs-extra";
 import { Component } from "../component";
 import { TypeScriptAppProject, TypeScriptProjectOptions } from "../typescript";
+import { YamlFile } from "../yaml";
+import { AutoDiscover } from "./auto-discover";
 
 export interface Cdk8sTypeScriptAppOptions extends TypeScriptProjectOptions {
   /**
@@ -11,6 +13,20 @@ export interface Cdk8sTypeScriptAppOptions extends TypeScriptProjectOptions {
    * @featured
    */
   readonly cdk8sVersion: string;
+
+  /**
+   * Import a specific Kubernetes spec version.
+   *
+   * @default - Use the cdk8s default
+   */
+  readonly k8sSpecVersion?: string;
+
+  /**
+   * Import additional specs
+   *
+   * @default - no additional specs imported
+   */
+  readonly cdk8sImports?: string[];
 
   /**
    * constructs verion
@@ -75,6 +91,15 @@ export interface Cdk8sTypeScriptAppOptions extends TypeScriptProjectOptions {
    * @default "main.ts"
    */
   readonly appEntrypoint?: string;
+
+  /**
+   * Automatically adds an `cdk8s.IntegrationTest` for each `.integ.ts` app
+   * in your test directory. If this is disabled, you can manually add an
+   * `cdk8s.AutoDiscover` component to your project.
+   *
+   * @default true
+   */
+  readonly integrationTestAutoDiscover?: boolean;
 }
 
 /**
@@ -154,7 +179,7 @@ export class Cdk8sTypeScriptApp extends TypeScriptAppProject {
       `constructs@${this.constructsVersion}`
     );
     this.addDevDeps(
-      "ts-node@^9",
+      "ts-node",
       `cdk8s-cli@${this.cdk8sCliVersion}`,
       `cdk8s@${this.cdk8sVersion}`,
       `constructs@${this.constructsVersion}`
@@ -168,18 +193,38 @@ export class Cdk8sTypeScriptApp extends TypeScriptAppProject {
 
     this.addTask("import", {
       description: "Imports API objects to your app by generating constructs.",
-      exec: "cdk8s import",
+      exec: "cdk8s import -o src/imports",
     });
-
-    this.gitignore.include("imports/");
-    this.gitignore.include("cdk8s.yaml");
 
     // add synth to the build
     this.postCompileTask.spawn(synth);
 
+    const cdk8sImports = options.cdk8sImports ?? [];
+    const k8sSpec = options.k8sSpecVersion
+      ? `k8s@${options.k8sSpecVersion}`
+      : "k8s";
+
+    const appEntrypointBaseName = path.basename(this.appEntrypoint, ".ts");
+
+    new YamlFile(this, "cdk8s.yaml", {
+      committed: true,
+      editGitignore: true,
+      obj: {
+        language: "typescript",
+        app: `node lib/${appEntrypointBaseName}.js`,
+        imports: [k8sSpec, ...cdk8sImports],
+      },
+    });
+
     if (options.sampleCode ?? true) {
       new SampleCode(this);
     }
+
+    new AutoDiscover(this, {
+      testdir: this.testdir,
+      tsconfigPath: this.tsconfigDev.fileName,
+      integrationTestAutoDiscover: options.integrationTestAutoDiscover ?? true,
+    });
   }
 }
 
@@ -241,18 +286,5 @@ app.synth();`;
 
     fs.mkdirpSync(srcdir);
     fs.writeFileSync(path.join(srcdir, this.appProject.appEntrypoint), srcCode);
-
-    const appEntrypointName = path.basename(
-      this.appProject.appEntrypoint,
-      ".ts"
-    );
-
-    const cdk8sYaml = `language: typescript
-app: node lib/${appEntrypointName}.js
-imports:
-  - k8s
-    `;
-
-    fs.writeFileSync(path.join(outdir, "cdk8s.yaml"), cdk8sYaml);
   }
 }

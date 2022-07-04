@@ -158,6 +158,15 @@ export interface JestConfigOptions {
   readonly maxConcurrency?: number;
 
   /**
+   * Specifies the maximum number of workers the worker-pool will spawn for running tests. In single run mode,
+   * this defaults to the number of the cores available on your machine minus one for the main thread
+   * In watch mode, this defaults to half of the available cores on your machine.
+   * For environments with variable CPUs available, you can use percentage based configuration: "maxWorkers": "50%"
+   * @default - the number of the cores available on your machine minus one for the main thread
+   */
+  readonly maxWorkers?: number | string;
+
+  /**
    * An array of directory names to be searched recursively up from the requiring module's location.
    * Setting this option will override the default, if you wish to still search node_modules for packages
    * include it along with any other options: ["node_modules", "bower_components"]
@@ -510,6 +519,8 @@ export interface JestOptions {
   /**
    * The version of jest to use.
    *
+   * Note that same version is used as version of `@types/jest` and `ts-jest` (if Typescript in use), so given version should work also for those.
+   *
    * @default - installs the latest jest version
    */
   readonly jestVersion?: string;
@@ -558,6 +569,7 @@ export class Jest {
    * Escape hatch.
    */
   public readonly config: any;
+  public readonly jestVersion: string;
 
   private readonly testMatch: string[];
   private readonly ignorePatterns: string[];
@@ -581,11 +593,8 @@ export class Jest {
 
     // Jest snapshot files are generated files!
     project.root.annotateGenerated("*.snap");
-
-    const jestDep = options.jestVersion
-      ? `jest@${options.jestVersion}`
-      : "jest";
-    project.addDevDeps(jestDep);
+    this.jestVersion = options.jestVersion ? `@${options.jestVersion}` : "";
+    project.addDevDeps(`jest${this.jestVersion}`);
 
     this.jestConfig = options.jestConfig;
 

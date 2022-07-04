@@ -192,8 +192,11 @@ export interface JobPermissions {
   readonly checks?: JobPermission;
   readonly contents?: JobPermission;
   readonly deployments?: JobPermission;
+  readonly idToken?: JobPermission;
   readonly issues?: JobPermission;
+  readonly discussions?: JobPermission;
   readonly packages?: JobPermission;
+  readonly pages?: JobPermission;
   readonly pullRequests?: JobPermission;
   readonly repositoryProjects?: JobPermission;
   readonly securityEvents?: JobPermission;
@@ -255,9 +258,9 @@ export interface RunSettings {
 }
 
 /**
- * A job step.
+ * A generic step
  */
-export interface JobStep {
+export interface Step {
   /**
    * A unique identifier for the step. You can use the id to reference the
    * step in contexts.
@@ -303,7 +306,12 @@ export interface JobStep {
    * You can also set environment variables for the entire workflow or a job.
    */
   readonly env?: Record<string, string>;
+}
 
+/**
+ * A job step
+ */
+export interface JobStep extends Step {
   /**
    * Prevents a job from failing when a step fails. Set to true to allow a job
    * to pass when this step fails.
@@ -349,6 +357,8 @@ export interface JobStrategy {
   readonly maxParallel?: number;
 }
 
+type JobMatrixValue = string | boolean | number;
+
 /**
  * A job matrix.
  */
@@ -361,7 +371,7 @@ export interface JobMatrix {
    * matrix.os property as the value of the runs-on keyword to create a job
    * for each operating system.
    */
-  readonly domain?: Record<string, string[]>;
+  readonly domain?: Record<string, JobMatrixValue[]>;
 
   /**
    * You can add additional configuration options to a build matrix job that
@@ -369,14 +379,14 @@ export interface JobMatrix {
    * when the job that uses windows-latest and version 8 of node runs, you can
    * use include to specify that additional option.
    */
-  readonly include?: Array<Record<string, string>>;
+  readonly include?: Array<Record<string, JobMatrixValue>>;
 
   /**
    * You can remove a specific configurations defined in the build matrix
    * using the exclude option. Using exclude removes a job defined by the
    * build matrix.
    */
-  readonly exclude?: Array<Record<string, string>>;
+  readonly exclude?: Array<Record<string, JobMatrixValue>>;
 }
 
 /**
@@ -1035,11 +1045,23 @@ export interface WatchOptions {
  */
 export interface WorkflowRunOptions {
   /**
+   * Which workflow to trigger on.
+   *
+   * @defaults - any workflows
+   */
+  readonly workflows?: Array<string>;
+  /**
    * Which activity types to trigger on.
    *
    * @defaults - all activity types
    */
   readonly types?: Array<"completed" | "requested">;
+  /**
+   * Which branches or branch-ignore to limit the trigger to.
+   *
+   * @defaults - no branch limits
+   */
+  readonly branches?: Array<string>;
 }
 
 //#region Empty Options (future-proofing the API)

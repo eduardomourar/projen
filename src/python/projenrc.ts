@@ -48,7 +48,7 @@ export class Projenrc extends Component {
     );
 
     // set up the "default" task which is the task executed when `projen` is executed for this project.
-    project.defaultTask.exec("python .projenrc.py");
+    project.defaultTask?.exec("python .projenrc.py");
 
     // if this is a new project, generate a skeleton for projenrc.py
     this.generateProjenrc();
@@ -98,7 +98,9 @@ export class Projenrc extends Component {
       bootstrap.args
     );
 
-    emit(toPythonImport(jsiiFqn));
+    const importName = resolvePythonImportName(jsiiFqn, jsiiManifest);
+    emit(toPythonImport(importName));
+
     for (const fqn of imports) {
       emit(toPythonImport(fqn));
     }
@@ -114,6 +116,15 @@ export class Projenrc extends Component {
       `Project definition file was created at ${pythonFile}`
     );
   }
+}
+
+export function resolvePythonImportName(jsiiFqn: string, jsiiManifest: any) {
+  const moduleName = jsiiManifest?.targets?.python?.module;
+
+  // Module name prefix should take precedence in the event moduleName !== fqn prefix
+  return moduleName
+    ? [moduleName, ...jsiiFqn.split(".").slice(1)].join(".")
+    : jsiiFqn;
 }
 
 function renderPythonOptions(

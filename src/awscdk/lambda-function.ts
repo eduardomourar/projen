@@ -1,12 +1,15 @@
-import { basename, dirname, extname, join, relative, sep, posix } from "path";
+import { basename, dirname, extname, join, relative } from "path";
 import { pascal } from "case";
 import { Component } from "../component";
-import { FileBase } from "../file";
 import { Bundler, BundlingOptions, Eslint } from "../javascript";
 import { Project } from "../project";
 import { SourceCode } from "../source-code";
 import { AwsCdkDeps } from "./awscdk-deps";
-import { TYPESCRIPT_LAMBDA_EXT } from "./internal";
+import {
+  convertToPosixPath,
+  TYPESCRIPT_EDGE_LAMBDA_EXT,
+  TYPESCRIPT_LAMBDA_EXT,
+} from "./internal";
 
 /**
  * Common options for `LambdaFunction`. Applies to all functions in
@@ -29,6 +32,30 @@ export interface LambdaFunctionCommonOptions {
    * @default - defaults
    */
   readonly bundlingOptions?: BundlingOptions;
+
+  /**
+   * Whether to automatically reuse TCP connections when working with the AWS
+   * SDK for JavaScript.
+   *
+   * This sets the `AWS_NODEJS_CONNECTION_REUSE_ENABLED` environment variable
+   * to `1`.
+   *
+   * Not applicable when `edgeLambda` is set to `true` because environment
+   * variables are not supported in Lambda@Edge.
+   *
+   * @see https://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/node-reusing-connections.html
+   *
+   * @default true
+   */
+  readonly awsSdkConnectionReuse?: boolean;
+
+  /**
+   * Whether to create a `cloudfront.experimental.EdgeFunction` instead
+   * of a `lambda.Function`.
+   *
+   * @default false
+   */
+  readonly edgeLambda?: boolean;
 }
 
 /**
@@ -115,15 +142,21 @@ export class LambdaFunction extends Component {
 
     const entrypoint = options.entrypoint;
 
-    if (!entrypoint.endsWith(TYPESCRIPT_LAMBDA_EXT)) {
+    if (
+      !entrypoint.endsWith(TYPESCRIPT_LAMBDA_EXT) &&
+      !entrypoint.endsWith(TYPESCRIPT_EDGE_LAMBDA_EXT)
+    ) {
       throw new Error(
-        `${entrypoint} must have a ${TYPESCRIPT_LAMBDA_EXT} extension`
+        `${entrypoint} must have a ${TYPESCRIPT_LAMBDA_EXT} or ${TYPESCRIPT_EDGE_LAMBDA_EXT} extension`
       );
     }
 
     const basePath = join(
       dirname(entrypoint),
-      basename(entrypoint, TYPESCRIPT_LAMBDA_EXT)
+      basename(
+        entrypoint,
+        options.edgeLambda ? TYPESCRIPT_EDGE_LAMBDA_EXT : TYPESCRIPT_LAMBDA_EXT
+      )
     );
     const constructFile = options.constructFile ?? `${basePath}-function.ts`;
 
@@ -159,15 +192,24 @@ export class LambdaFunction extends Component {
     );
 
     const src = new SourceCode(project, constructFile);
-    src.line(`// ${FileBase.PROJEN_MARKER}`);
+    if (src.marker) {
+      src.line(`// ${src.marker}`);
+    }
     src.line("import * as path from 'path';");
 
     if (cdkDeps.cdkMajorVersion === 1) {
+      if (options.edgeLambda) {
+        src.line("import * as cloudfront from '@aws-cdk/aws-cloudfront';");
+        cdkDeps.addV1Dependencies("@aws-cdk/aws-cloudfront");
+      }
       src.line("import * as lambda from '@aws-cdk/aws-lambda';");
       src.line("import { Construct } from '@aws-cdk/core';");
       cdkDeps.addV1Dependencies("@aws-cdk/aws-lambda");
       cdkDeps.addV1Dependencies("@aws-cdk/core");
     } else {
+      if (options.edgeLambda) {
+        src.line("import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';");
+      }
       src.line("import * as lambda from 'aws-cdk-lib/aws-lambda';");
       src.line("import { Construct } from 'constructs';");
     }
@@ -176,7 +218,15 @@ export class LambdaFunction extends Component {
     src.line("/**");
     src.line(` * Props for ${constructName}`);
     src.line(" */");
-    src.open(`export interface ${propsType} extends lambda.FunctionOptions {`);
+    if (options.edgeLambda) {
+      src.open(
+        `export interface ${propsType} extends cloudfront.experimental.EdgeFunctionProps {`
+      );
+    } else {
+      src.open(
+        `export interface ${propsType} extends lambda.FunctionOptions {`
+      );
+    }
     src.close("}");
     src.line();
     src.line("/**");
@@ -186,7 +236,13 @@ export class LambdaFunction extends Component {
       )}.`
     );
     src.line(" */");
-    src.open(`export class ${constructName} extends lambda.Function {`);
+    if (options.edgeLambda) {
+      src.open(
+        `export class ${constructName} extends cloudfront.experimental.EdgeFunction {`
+      );
+    } else {
+      src.open(`export class ${constructName} extends lambda.Function {`);
+    }
     src.open(
       `constructor(scope: Construct, id: string, props?: ${propsType}) {`
     );
@@ -201,6 +257,11 @@ export class LambdaFunction extends Component {
       )}')),`
     );
     src.close("});");
+    if ((options.awsSdkConnectionReuse ?? true) && !options.edgeLambda) {
+      src.line(
+        "this.addEnvironment('AWS_NODEJS_CONNECTION_REUSE_ENABLED', '1', { removeInEdge: true });"
+      );
+    }
     src.close("}");
     src.close("}");
 
@@ -246,6 +307,14 @@ export class LambdaRuntime {
     "node14"
   );
 
+  /**
+   * Node.js 16.x
+   */
+  public static readonly NODEJS_16_X = new LambdaRuntime(
+    "NODEJS_16_X",
+    "node16"
+  );
+
   public readonly esbuildPlatform = "node";
 
   private constructor(
@@ -259,11 +328,4 @@ export class LambdaRuntime {
      */
     public readonly esbuildTarget: string
   ) {}
-}
-
-/**
- * Converts the given path string to posix if it wasn't already.
- */
-function convertToPosixPath(p: string) {
-  return p.split(sep).join(posix.sep);
 }

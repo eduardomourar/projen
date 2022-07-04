@@ -19,13 +19,6 @@ export interface ObjectFileOptions extends FileBaseOptions {
    * @default false
    */
   readonly omitEmpty?: boolean;
-
-  /**
-   * Adds the projen marker to the file.
-   *
-   * @default true
-   */
-  readonly marker?: boolean;
 }
 
 /**
@@ -37,12 +30,6 @@ export abstract class ObjectFile extends FileBase {
    * synthesized.
    */
   private readonly obj: object;
-
-  /**
-   * Indicates if the projen marker JSON-comment will be added to the output
-   * object.
-   */
-  public marker: boolean;
 
   /**
    * An object to be merged on top of `obj` after the resolver is called
@@ -58,7 +45,6 @@ export abstract class ObjectFile extends FileBase {
     super(project, filePath, options);
 
     this.obj = options.obj ?? {};
-    this.marker = options.marker ?? true;
     this.omitEmpty = options.omitEmpty ?? false;
     this.rawOverrides = {};
   }
@@ -119,6 +105,73 @@ export abstract class ObjectFile extends FileBase {
 
     const lastKey = parts.shift()!;
     curr[lastKey] = value;
+  }
+
+  /**
+   * Adds to an array in the synthesized object file.
+   *
+   * If the array is nested, separate each nested level using a dot (.) in the path parameter.
+   * If there is an array as part of the nesting, specify the index in the path.
+   *
+   * To include a literal `.` in the property name, prefix with a `\`. In most
+   * programming languages you will need to write this as `"\\."` because the
+   * `\` itself will need to be escaped.
+   *
+   * For example, with the following object file
+   * ```json
+   * "compilerOptions": {
+   *   "exclude": ["node_modules"],
+   *   "lib": ["es2019"]
+   *   ...
+   * }
+   * ...
+   * ```
+   *
+   * ```typescript
+   * project.tsconfig.file.addToArray('compilerOptions.exclude', 'coverage');
+   * project.tsconfig.file.addToArray('compilerOptions.lib', 'dom', 'dom.iterable', 'esnext');
+   * ```
+   * would result in the following object file
+   * ```json
+   * "compilerOptions": {
+   *   "exclude": ["node_modules", "coverage"],
+   *   "lib": ["es2019", "dom", "dom.iterable", "esnext"]
+   *   ...
+   * }
+   * ...
+   * ```
+   *
+   * @param path - The path of the property, you can use dot notation to
+   *        att to arrays in complex types. Any intermediate keys
+   *        will be created as needed.
+   * @param values - The values to add. Could be primitive or complex.
+   */
+  public addToArray(path: string, ...values: any) {
+    const parts = splitOnPeriods(path);
+    let curr: any = this.rawOverrides;
+
+    while (parts.length > 1) {
+      const key = parts.shift()!;
+
+      // if we can't recurse further or the previous value is not an
+      // object overwrite it with an object.
+      const isObject =
+        curr[key] != null &&
+        typeof curr[key] === "object" &&
+        !Array.isArray(curr[key]);
+      if (!isObject) {
+        curr[key] = {};
+      }
+
+      curr = curr[key];
+    }
+
+    const lastKey = parts.shift()!;
+    if (Array.isArray(curr[lastKey])) {
+      curr[lastKey].push(...values);
+    } else {
+      curr[lastKey] = { __$APPEND: values };
+    }
   }
 
   /**

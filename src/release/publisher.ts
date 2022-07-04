@@ -1,4 +1,3 @@
-import { JSII_TOOLCHAIN } from "../cdk/consts";
 import { Component } from "../component";
 import {
   BUILD_ARTIFACT_NAME,
@@ -15,11 +14,19 @@ import { defaultNpmToken } from "../javascript/node-package";
 import { Project } from "../project";
 import { BranchOptions } from "./release";
 
-const JSII_RELEASE_VERSION = "latest";
+const PUBLIB_VERSION = "latest";
 const GITHUB_PACKAGES_REGISTRY = "npm.pkg.github.com";
 const ARTIFACTS_DOWNLOAD_DIR = "dist";
 const GITHUB_PACKAGES_MAVEN_REPOSITORY = "https://maven.pkg.github.com";
+const GITHUB_PACKAGES_NUGET_REPOSITORY = "https://nuget.pkg.github.com";
 const AWS_CODEARTIFACT_REGISTRY_REGEX = /.codeartifact.*.amazonaws.com/;
+const PUBLIB_TOOLCHAIN = {
+  js: {},
+  java: { java: { version: "11.x" } },
+  python: { python: { version: "3.x" } },
+  go: { go: { version: "^1.16.0" } },
+  dotnet: { dotnet: { version: "3.x" } },
+};
 
 /**
  * Options for `Publisher`.
@@ -44,16 +51,21 @@ export interface PublisherOptions {
    * `go` (GitHub), `dotnet` (NuGet), `java` (Maven), `js` (npm), `python`
    * (PyPI).
    *
-   * @see https://github.com/aws/jsii-release
+   * @see https://github.com/aws/publib
    */
   readonly artifactName: string;
 
   /**
-   * Version requirement for `jsii-release`.
+   * @deprecated use `publibVersion` instead
+   */
+  readonly jsiiReleaseVersion?: string;
+
+  /**
+   * Version requirement for `publib`.
    *
    * @default "latest"
    */
-  readonly jsiiReleaseVersion?: string;
+  readonly publibVersion?: string;
 
   /**
    * Create an issue when a publish task fails.
@@ -97,13 +109,18 @@ export interface PublisherOptions {
 /**
  * Implements GitHub jobs for publishing modules to package managers.
  *
- * Under the hood, it uses https://github.com/aws/jsii-release
+ * Under the hood, it uses https://github.com/aws/publib
  */
 export class Publisher extends Component {
+  public static readonly PUBLISH_GIT_TASK_NAME = "publish:git";
+
   public readonly buildJobId: string;
   public readonly artifactName: string;
-  public readonly jsiiReleaseVersion: string;
+  public readonly publibVersion: string;
   public readonly condition?: string;
+
+  /** @deprecated use `publibVersion` */
+  public readonly jsiiReleaseVersion: string;
 
   private readonly failureIssue: boolean;
   private readonly failureIssueLabel: string;
@@ -122,8 +139,9 @@ export class Publisher extends Component {
 
     this.buildJobId = options.buildJobId;
     this.artifactName = options.artifactName;
-    this.jsiiReleaseVersion =
-      options.jsiiReleaseVersion ?? JSII_RELEASE_VERSION;
+    this.publibVersion =
+      options.publibVersion ?? options.jsiiReleaseVersion ?? PUBLIB_VERSION;
+    this.jsiiReleaseVersion = this.publibVersion;
     this.condition = options.condition;
     this.dryRun = options.dryRun ?? false;
 
@@ -182,8 +200,8 @@ export class Publisher extends Component {
 
     const taskName =
       gitBranch === "main" || gitBranch === "master"
-        ? "publish:git"
-        : `publish:git:${gitBranch}`;
+        ? Publisher.PUBLISH_GIT_TASK_NAME
+        : `${Publisher.PUBLISH_GIT_TASK_NAME}:${gitBranch}`;
 
     const publishTask = this.project.addTask(taskName, {
       description:
@@ -194,6 +212,7 @@ export class Publisher extends Component {
         PROJECT_CHANGELOG_FILE: projectChangelogFile ?? "",
         VERSION_FILE: versionFile,
       },
+      condition: '! git log --oneline -1 | grep -q "chore(release):"',
     });
     if (projectChangelogFile) {
       publishTask.builtin("release/update-changelog");
@@ -284,9 +303,9 @@ export class Publisher extends Component {
 
       return {
         name: "npm",
-        publishTools: JSII_TOOLCHAIN.js,
+        publishTools: PUBLIB_TOOLCHAIN.js,
         prePublishSteps: options.prePublishSteps ?? [],
-        run: this.jsiiReleaseCommand("jsii-release-npm"),
+        run: this.publibCommand("publib-npm"),
         registryName: "npm",
         env: {
           NPM_DIST_TAG: branchOptions.npmDistTag ?? options.distTag ?? "latest",
@@ -324,15 +343,27 @@ export class Publisher extends Component {
    * @param options Options
    */
   public publishToNuget(options: NugetPublishOptions = {}) {
+    const isGitHubPackages = options.nugetServer?.startsWith(
+      GITHUB_PACKAGES_NUGET_REPOSITORY
+    );
     this.addPublishJob(
       (_branch, _branchOptions): PublishJobOptions => ({
         name: "nuget",
-        publishTools: JSII_TOOLCHAIN.dotnet,
+        publishTools: PUBLIB_TOOLCHAIN.dotnet,
         prePublishSteps: options.prePublishSteps ?? [],
-        run: this.jsiiReleaseCommand("jsii-release-nuget"),
+        run: this.publibCommand("publib-nuget"),
         registryName: "NuGet Gallery",
+        permissions: {
+          contents: JobPermission.READ,
+          packages: isGitHubPackages ? JobPermission.WRITE : undefined,
+        },
         workflowEnv: {
-          NUGET_API_KEY: secret(options.nugetApiKeySecret ?? "NUGET_API_KEY"),
+          NUGET_API_KEY: secret(
+            isGitHubPackages
+              ? "GITHUB_TOKEN"
+              : options.nugetApiKeySecret ?? "NUGET_API_KEY"
+          ),
+          NUGET_SERVER: options.nugetServer ?? undefined,
         },
       })
     );
@@ -361,9 +392,9 @@ export class Publisher extends Component {
       (_branch, _branchOptions): PublishJobOptions => ({
         name: "maven",
         registryName: "Maven Central",
-        publishTools: JSII_TOOLCHAIN.java,
+        publishTools: PUBLIB_TOOLCHAIN.java,
         prePublishSteps: options.prePublishSteps ?? [],
-        run: this.jsiiReleaseCommand("jsii-release-maven"),
+        run: this.publibCommand("publib-maven"),
         env: {
           MAVEN_ENDPOINT: options.mavenEndpoint,
           MAVEN_SERVER_ID: mavenServerId,
@@ -411,9 +442,9 @@ export class Publisher extends Component {
       (_branch, _branchOptions): PublishJobOptions => ({
         name: "pypi",
         registryName: "PyPI",
-        publishTools: JSII_TOOLCHAIN.python,
+        publishTools: PUBLIB_TOOLCHAIN.python,
         prePublishSteps: options.prePublishSteps ?? [],
-        run: this.jsiiReleaseCommand("jsii-release-pypi"),
+        run: this.publibCommand("publib-pypi"),
         env: {
           TWINE_REPOSITORY_URL: options.twineRegistryUrl,
         },
@@ -434,12 +465,33 @@ export class Publisher extends Component {
    * @param options Options
    */
   public publishToGo(options: GoPublishOptions = {}) {
+    const prePublishSteps = options.prePublishSteps ?? [];
+    const workflowEnv: { [name: string]: string | undefined } = {};
+    if (options.githubUseSsh) {
+      workflowEnv.GITHUB_USE_SSH = "true";
+      workflowEnv.SSH_AUTH_SOCK = "/tmp/ssh_agent.sock";
+      prePublishSteps.push({
+        name: "Setup GitHub deploy key",
+        run: 'ssh-agent -a ${SSH_AUTH_SOCK} && ssh-add - <<< "${GITHUB_DEPLOY_KEY}"',
+        env: {
+          GITHUB_DEPLOY_KEY: secret(
+            options.githubDeployKeySecret ?? "GO_GITHUB_DEPLOY_KEY"
+          ),
+          SSH_AUTH_SOCK: workflowEnv.SSH_AUTH_SOCK,
+        },
+      });
+    } else {
+      workflowEnv.GITHUB_TOKEN = secret(
+        options.githubTokenSecret ?? "GO_GITHUB_TOKEN"
+      );
+    }
+
     this.addPublishJob(
       (_branch, _branchOptions): PublishJobOptions => ({
         name: "golang",
-        publishTools: JSII_TOOLCHAIN.go,
-        prePublishSteps: options.prePublishSteps ?? [],
-        run: this.jsiiReleaseCommand("jsii-release-golang"),
+        publishTools: PUBLIB_TOOLCHAIN.go,
+        prePublishSteps: prePublishSteps,
+        run: this.publibCommand("publib-golang"),
         registryName: "GitHub Go Module Repository",
         env: {
           GITHUB_REPO: options.githubRepo,
@@ -450,9 +502,7 @@ export class Publisher extends Component {
             options.gitUserEmail ?? DEFAULT_GITHUB_ACTIONS_USER.email,
           GIT_COMMIT_MESSAGE: options.gitCommitMessage,
         },
-        workflowEnv: {
-          GITHUB_TOKEN: secret(options.githubTokenSecret ?? "GO_GITHUB_TOKEN"),
-        },
+        workflowEnv: workflowEnv,
       })
     );
   }
@@ -509,10 +559,10 @@ export class Publisher extends Component {
       const steps: JobStep[] = [
         {
           name: "Download build artifacts",
-          uses: "actions/download-artifact@v2",
+          uses: "actions/download-artifact@v3",
           with: {
             name: BUILD_ARTIFACT_NAME,
-            path: ARTIFACTS_DOWNLOAD_DIR, // this must be "dist" for jsii-release
+            path: ARTIFACTS_DOWNLOAD_DIR, // this must be "dist" for publib
           },
         },
         ...opts.prePublishSteps,
@@ -570,8 +620,8 @@ export class Publisher extends Component {
     });
   }
 
-  private jsiiReleaseCommand(command: string) {
-    return `npx -p jsii-release@${this.jsiiReleaseVersion} ${command}`;
+  private publibCommand(command: string) {
+    return `npx -p publib@${this.publibVersion} ${command}`;
   }
 }
 
@@ -770,6 +820,11 @@ export interface NugetPublishOptions extends CommonPublishOptions {
    * @default "NUGET_API_KEY"
    */
   readonly nugetApiKeySecret?: string;
+
+  /**
+   *  NuGet Server URL (defaults to nuget.org)
+   */
+  readonly nugetServer?: string;
 }
 
 /**
@@ -807,7 +862,7 @@ export interface MavenPublishOptions extends CommonPublishOptions {
    * it. This is used to sign your Maven
    * packages. See instructions.
    *
-   * @see https://github.com/aws/jsii-release#maven
+   * @see https://github.com/aws/publib#maven
    * @default "MAVEN_GPG_PRIVATE_KEY" or not set when using GitHub Packages
    */
   readonly mavenGpgPrivateKeySecret?: string;
@@ -816,7 +871,7 @@ export interface MavenPublishOptions extends CommonPublishOptions {
    * GitHub secret name which contains the GPG private key or file that includes
    * it. This is used to sign your Maven packages. See instructions.
    *
-   * @see https://github.com/aws/jsii-release#maven
+   * @see https://github.com/aws/publib#maven
    * @default "MAVEN_GPG_PRIVATE_KEY_PASSPHRASE" or not set when using GitHub Packages
    */
   readonly mavenGpgPrivateKeyPassphrase?: string;
@@ -861,7 +916,8 @@ export interface MavenPublishOptions extends CommonPublishOptions {
 
 /**
  * @deprecated Use `GoPublishOptions` instead.
-export interface JsiiReleaseGo extends GoPublishOptions { }
+ */
+export interface JsiiReleaseGo extends GoPublishOptions {}
 
 /**
  * Options for Go releases.
@@ -871,9 +927,28 @@ export interface GoPublishOptions extends CommonPublishOptions {
    * The name of the secret that includes a personal GitHub access token used to
    * push to the GitHub repository.
    *
+   * Ignored if `githubUseSsh` is `true`.
+   *
    * @default "GO_GITHUB_TOKEN"
    */
   readonly githubTokenSecret?: string;
+
+  /**
+   * The name of the secret that includes a GitHub deploy key used to push to the
+   * GitHub repository.
+   *
+   * Ignored if `githubUseSsh` is `false`.
+   *
+   * @default "GO_GITHUB_DEPLOY_KEY"
+   */
+  readonly githubDeployKeySecret?: string;
+
+  /**
+   * Use SSH to push to GitHub instead of a personal accses token.
+   *
+   * @default false
+   */
+  readonly githubUseSsh?: boolean;
 
   /**
    * GitHub repository to push to.

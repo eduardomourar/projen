@@ -6,7 +6,13 @@ import {
   DEFAULT_GITHUB_ACTIONS_USER,
 } from "../github/constants";
 import { WorkflowActions } from "../github/workflow-actions";
-import { Job, JobPermission, JobStep, Tools } from "../github/workflows-model";
+import {
+  Job,
+  JobPermission,
+  JobStep,
+  Tools,
+  Triggers,
+} from "../github/workflows-model";
 import { NodeProject } from "../javascript";
 import { Project } from "../project";
 
@@ -82,6 +88,12 @@ export interface BuildWorkflowOptions {
    * @default ["ubuntu-latest"]
    */
   readonly runsOn?: string[];
+
+  /**
+   * Build workflow triggers
+   * @default "{ pullRequest: {}, workflowDispatch: {} }"
+   */
+  readonly workflowTriggers?: Triggers;
 }
 
 export class BuildWorkflow extends Component {
@@ -115,10 +127,12 @@ export class BuildWorkflow extends Component {
     const mutableBuilds = options.mutableBuild ?? true;
 
     this.workflow = new GithubWorkflow(github, "build");
-    this.workflow.on({
-      pullRequest: {},
-      workflowDispatch: {}, // allow manual triggering
-    });
+    this.workflow.on(
+      options.workflowTriggers ?? {
+        pullRequest: {},
+        workflowDispatch: {}, // allow manual triggering
+      }
+    );
 
     this.addBuildJob(options);
 
@@ -182,7 +196,7 @@ export class BuildWorkflow extends Component {
     if (this.artifactsDirectory) {
       steps.push({
         name: "Download build artifacts",
-        uses: "actions/download-artifact@v2",
+        uses: "actions/download-artifact@v3",
         with: {
           name: BUILD_ARTIFACT_NAME,
           path: this.artifactsDirectory,
@@ -217,7 +231,10 @@ export class BuildWorkflow extends Component {
    *
    * @param options Specify tools and other options
    */
-  public addPostBuildJobTask(task: Task, options: AddPostBuildJobTaskOptions) {
+  public addPostBuildJobTask(
+    task: Task,
+    options: AddPostBuildJobTaskOptions = {}
+  ) {
     this.addPostBuildJobCommands(
       `post-build-${task.name}`,
       [`${this.project.projenCommand} ${task.name}`],
@@ -250,7 +267,7 @@ export class BuildWorkflow extends Component {
     if (options?.checkoutRepo) {
       steps.push({
         name: "Checkout",
-        uses: "actions/checkout@v2",
+        uses: "actions/checkout@v3",
         with: {
           ref: PULL_REQUEST_REF,
           repository: PULL_REQUEST_REPOSITORY,
@@ -290,9 +307,10 @@ export class BuildWorkflow extends Component {
       needs: [BUILD_JOBID],
       if: `always() && ${SELF_MUTATION_CONDITION} && ${NOT_FORK}`,
       steps: [
+        ...this.workflow.projenCredentials.setupSteps,
         ...WorkflowActions.checkoutWithPatch({
           // we need to use a PAT so that our push will trigger the build workflow
-          token: `\${{ secrets.${this.workflow.projenTokenSecret} }}`,
+          token: this.workflow.projenCredentials.tokenRef,
           ref: PULL_REQUEST_REF,
           repository: PULL_REQUEST_REPOSITORY,
         }),
@@ -301,7 +319,7 @@ export class BuildWorkflow extends Component {
           name: "Push changes",
           run: [
             "  git add .",
-            '  git commit -m -s "chore: self mutation"',
+            '  git commit -s -m "chore: self mutation"',
             `  git push origin HEAD:${PULL_REQUEST_REF}`,
           ].join("\n"),
         },
@@ -316,7 +334,7 @@ export class BuildWorkflow extends Component {
     return [
       {
         name: "Checkout",
-        uses: "actions/checkout@v2",
+        uses: "actions/checkout@v3",
         with: {
           ref: PULL_REQUEST_REF,
           repository: PULL_REQUEST_REPOSITORY,

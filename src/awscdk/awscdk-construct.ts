@@ -23,6 +23,32 @@ export interface AwsCdkConstructLibraryOptions
   readonly lambdaAutoDiscover?: boolean;
 
   /**
+   * Automatically adds an `cloudfront.experimental.EdgeFunction` for each
+   * `.edge-lambda.ts` handler in your source tree. If this is disabled, you can
+   * manually add an `awscdk.AutoDiscover` component to your project.
+   *
+   * @default true
+   */
+  readonly edgeLambdaAutoDiscover?: boolean;
+
+  /**
+   * Automatically adds an `awscdk.LambdaExtension` for each `.lambda-extension.ts`
+   * entrypoint in your source tree. If this is disabled, you can manually add an
+   * `awscdk.AutoDiscover` component to your project
+   *
+   * @default true
+   */
+  readonly lambdaExtensionAutoDiscover?: boolean;
+
+  /**
+   * Automatically discovers and creates integration tests for each `.integ.ts`
+   * file in under your test directory.
+   *
+   * @default true
+   */
+  readonly integrationTestAutoDiscover?: boolean;
+
+  /**
    * Common options for all AWS Lambda functions.
    *
    * @default - default options
@@ -65,16 +91,17 @@ export class AwsCdkConstructLibrary extends ConstructLibrary {
       ...options,
     });
 
-    const lambdaAutoDiscover = options.lambdaAutoDiscover ?? true;
-    if (lambdaAutoDiscover) {
-      new AutoDiscover(this, {
-        srcdir: this.srcdir,
-        testdir: this.testdir,
-        lambdaOptions: options.lambdaOptions,
-        tsconfigPath: this.tsconfigDev.fileName,
-        cdkDeps: this.cdkDeps,
-      });
-    }
+    new AutoDiscover(this, {
+      srcdir: this.srcdir,
+      testdir: this.testdir,
+      lambdaOptions: options.lambdaOptions,
+      tsconfigPath: this.tsconfigDev.fileName,
+      cdkDeps: this.cdkDeps,
+      lambdaAutoDiscover: options.lambdaAutoDiscover ?? true,
+      edgeLambdaAutoDiscover: options.edgeLambdaAutoDiscover ?? true,
+      lambdaExtensionAutoDiscover: options.lambdaExtensionAutoDiscover ?? true,
+      integrationTestAutoDiscover: options.integrationTestAutoDiscover ?? true,
+    });
   }
 
   /**

@@ -131,6 +131,9 @@ export async function bump(cwd: string, options: BumpOptions) {
   if (isFirstRelease) {
     cmd.push("--first-release");
   }
+  if (prefix) {
+    cmd.push(`--tag-prefix ${prefix}v`);
+  }
 
   exec(cmd.join(" "), { cwd });
 
@@ -245,7 +248,8 @@ function determineLatestTag(options: LatestTagOptions): {
   const { cwd, major, prerelease, prefix } = options;
 
   // filter only tags for this prefix and major version if specified (start with "vNN.").
-  const prefixFilter = major ? `${prefix}v${major}.*` : `${prefix}v*`;
+  const prefixFilter =
+    major !== undefined ? `${prefix}v${major}.*` : `${prefix}v*`;
 
   const listGitTags = [
     "git",

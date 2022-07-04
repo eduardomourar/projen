@@ -318,16 +318,32 @@ export class TypeScriptProject extends NodeProject {
       }
     }
 
+    const projenrcTypeScript = options.projenrcTs ?? false;
+
+    const projenRcFilename = projenrcTypeScript
+      ? options.projenrcTsOptions?.filename ?? ".projenrc.ts"
+      : undefined;
+
     if (options.eslint ?? true) {
+      const devdirs = [this.testdir, "build-tools"];
+      if (projenrcTypeScript) {
+        devdirs.push(options.projenrcTsOptions?.projenCodeDir ?? "projenrc");
+      }
+
       this.eslint = new Eslint(this, {
         tsconfigPath: `./${this.tsconfigDev.fileName}`,
         dirs: [this.srcdir],
-        devdirs: [this.testdir, "build-tools"],
+        devdirs,
         fileExtensions: [".ts", ".tsx"],
+        lintProjenRcFile: projenRcFilename,
         ...options.eslintOptions,
       });
 
       this.tsconfigEslint = this.tsconfigDev;
+    }
+
+    if (projenrcTypeScript) {
+      new ProjenrcTs(this, options.projenrcTsOptions);
     }
 
     const tsver = options.typescriptVersion
@@ -345,7 +361,7 @@ export class TypeScriptProject extends NodeProject {
       // Additionally, we default to tracking the 12.x line, as the current earliest LTS release of
       // node is 12.x, so this is what corresponds to the broadest compatibility with supported node
       // runtimes.
-      `@types/node@^${semver.major(this.package.minNodeVersion ?? "12.0.0")}`
+      `@types/node@^${semver.major(this.package.minNodeVersion ?? "14.0.0")}`
     );
 
     // generate sample code in `src` and `lib` if these directories are empty or non-existent.
@@ -356,11 +372,6 @@ export class TypeScriptProject extends NodeProject {
     if (this.docgen) {
       new TypedocDocgen(this);
     }
-
-    const projenrcTypeScript = options.projenrcTs ?? false;
-    if (projenrcTypeScript) {
-      new ProjenrcTs(this, options.projenrcTsOptions);
-    }
   }
 
   /**
@@ -368,7 +379,7 @@ export class TypeScriptProject extends NodeProject {
    * for us. just run them directly from javascript.
    */
   private addJestCompiled(jest: Jest) {
-    this.addDevDeps("@types/jest");
+    this.addDevDeps(`@types/jest${jest.jestVersion}`);
 
     const testout = path.posix.relative(this.srcdir, this.testdir);
     const libtest = path.posix.join(this.libdir, testout);
@@ -397,7 +408,9 @@ export class TypeScriptProject extends NodeProject {
       this,
       path.posix.join(PROJEN_DIR, "jest-snapshot-resolver.js")
     );
-    resolver.addLine(`// ${TextFile.PROJEN_MARKER}`);
+    if (!resolver.marker) {
+      resolver.addLine(`// ${resolver.marker}`);
+    }
     resolver.addLine('const path = require("path");');
     resolver.addLine(`const libtest = "${libtest}";`);
     resolver.addLine(`const srctest= "${srctest}";`);
@@ -415,7 +428,10 @@ export class TypeScriptProject extends NodeProject {
   }
 
   private addJestNoCompile(jest: Jest) {
-    this.addDevDeps("@types/jest", "ts-jest");
+    this.addDevDeps(
+      `@types/jest${jest.jestVersion}`,
+      `ts-jest${jest.jestVersion}`
+    );
 
     jest.addTestMatch(`<rootDir>/${this.srcdir}/**/__tests__/**/*.ts?(x)`);
     jest.addTestMatch(
@@ -457,11 +473,13 @@ class SampleCode extends Component {
       },
     });
 
-    new SampleDir(project, project.testdir, {
-      files: {
-        "hello.test.ts": testCode,
-      },
-    });
+    if (project.jest) {
+      new SampleDir(project, project.testdir, {
+        files: {
+          "hello.test.ts": testCode,
+        },
+      });
+    }
   }
 }
 

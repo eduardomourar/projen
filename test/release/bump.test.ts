@@ -81,7 +81,7 @@ test("select latest, with prefix", async () => {
     commits: [
       { message: "first version", tag: "prefix/v1.1.0" },
       { message: "unrelated version", tag: "v2.0.0" },
-      { message: "second version", tag: "prefix/v1.2.0" },
+      { message: "feat: feature 1", tag: "prefix/v1.2.0" },
       { message: "fix: bug" },
       { message: "fix: another bug" },
     ],
@@ -91,6 +91,7 @@ test("select latest, with prefix", async () => {
   expect(result.changelog.includes("Bug Fixes")).toBeTruthy();
   expect(result.changelog.includes("another bug")).toBeTruthy();
   expect(result.changelog.includes("bug")).toBeTruthy();
+  expect(result.changelog.includes("feature 1")).toBeFalsy();
   expect(result.bumpfile).toStrictEqual("1.2.1");
   expect(result.tag).toStrictEqual("prefix/v1.2.1");
 });
@@ -121,6 +122,24 @@ test("select latest with major", async () => {
   expect(result10.version).toEqual("10.21.1");
   expect(result10.bumpfile).toStrictEqual("10.21.1");
   expect(result10.tag).toStrictEqual("v10.21.1");
+});
+
+test("bump with major equal to 0", async () => {
+  const commits = [
+    { message: "first version", tag: "v0.1.0" },
+    { message: "second version", tag: "v0.1.1" },
+    { message: "stable branch", tag: "v1.0.0" },
+    { message: "fix: bug" },
+  ];
+
+  const result1 = await testBump({
+    options: { majorVersion: 0 },
+    commits: commits,
+  });
+
+  expect(result1.version).toEqual("0.1.2");
+  expect(result1.bumpfile).toEqual("0.1.2");
+  expect(result1.tag).toStrictEqual("v0.1.2");
 });
 
 test("already tagged version is not bumped again", async () => {
@@ -184,7 +203,11 @@ async function testBump(
   const workdir = mkdtempSync(join(tmpdir(), "bump-test-"));
 
   const git = (cmd: string) =>
-    execSync(`git ${cmd}`, { cwd: workdir, stdio: "inherit" });
+    execSync(`git ${cmd}`, {
+      cwd: workdir,
+      stdio: "inherit",
+      timeout: 10_000, // let's try to catch hanging processes sooner than later
+    });
 
   // init a git repository
   git("init -b main");
