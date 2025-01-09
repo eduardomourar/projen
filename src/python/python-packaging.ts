@@ -1,5 +1,5 @@
-import { Task } from "../task";
 import { PoetryPyprojectOptionsWithoutDeps } from "./poetry";
+import { Task } from "../task";
 
 export interface IPythonPackaging {
   /**
@@ -15,6 +15,11 @@ export interface PythonPackagingOptions {
    * @default $GIT_USER_NAME
    */
   readonly authorName: string;
+
+  /**
+   * Package name.
+   */
+  readonly packageName?: string;
 
   /**
    * Author's e-mail

@@ -1,7 +1,26 @@
 import * as path from "path";
 import * as inventory from "../src/inventory";
+import { toProjectType } from "../src/inventory";
 
 const result = inventory.discover();
+
+test("read manifest - no compression", () => {
+  const manifest = inventory.readManifest(
+    path.join(__dirname, "inventory/no_compression")
+  );
+
+  expect(manifest.schema).toEqual("jsii/0.10.0");
+  expect(manifest.compression).toEqual("none");
+});
+
+test("read manifest - gzip compression", () => {
+  const manifest = inventory.readManifest(
+    path.join(__dirname, "inventory/gzip_compression")
+  );
+
+  expect(manifest.schema).toEqual("jsii/0.10.0");
+  expect(manifest.compression).toEqual("gzip");
+});
 
 test("project id", () => {
   expect(result.map((x) => x.pjid).sort()).toContain("jsii");
@@ -49,6 +68,18 @@ test("renderable default values simulation", () => {
   expect(() =>
     throwIfNotRenderable({ ...baseOption, default: "true" })
   ).not.toThrowError();
+  expect(() =>
+    throwIfNotRenderable({ ...baseOption, default: '["a", "b", "c"]' })
+  ).not.toThrowError();
+  expect(() =>
+    throwIfNotRenderable({ ...baseOption, default: "[1, 2, 3]" })
+  ).not.toThrowError();
+  expect(() =>
+    throwIfNotRenderable({ ...baseOption, default: "[true, false, true]" })
+  ).not.toThrowError();
+  expect(() =>
+    throwIfNotRenderable({ ...baseOption, default: "[]" })
+  ).not.toThrowError();
 
   expect(() =>
     throwIfNotRenderable({
@@ -83,6 +114,27 @@ describe("all default values in docstrings are renderable JS values", () => {
         expect(() => throwIfNotRenderable(option)).not.toThrowError();
       });
     });
+  });
+});
+
+test("@pjnew is parsed as initial value", () => {
+  const option = result
+    .find((p) => p.pjid === "typescript")
+    ?.options.find((o) => o.name === "projenrcTs");
+
+  expect(option?.initialValue).toBe("true");
+});
+
+test("all allowed default values can be discovered and rendered", () => {
+  const defaultOptionsManifest = inventory.readManifest(
+    path.join(__dirname, "inventory/renderable-defaults")
+  );
+  const testProject = toProjectType(
+    defaultOptionsManifest.types,
+    "test.TestProject"
+  );
+  testProject.options.forEach((option) => {
+    expect(() => throwIfNotRenderable(option)).not.toThrowError();
   });
 });
 
