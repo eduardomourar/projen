@@ -1,8 +1,14 @@
-import { Component } from "../component";
-import { Task } from "../task";
 import { IPythonPackaging, PythonPackagingOptions } from "./python-packaging";
-import { PythonProject } from "./python-project";
+import { PythonExecutableOptions } from "./python-project";
 import { SetupPy } from "./setuppy";
+import { Component } from "../component";
+import { DependencyType } from "../dependencies";
+import { Project } from "../project";
+import { Task } from "../task";
+
+export interface SetuptoolsOptions
+  extends PythonPackagingOptions,
+    PythonExecutableOptions {}
 
 /**
  * Manages packaging through setuptools with a setup.py script.
@@ -15,13 +21,16 @@ export class Setuptools extends Component implements IPythonPackaging {
    */
   public readonly publishTestTask: Task;
 
-  constructor(project: PythonProject, options: PythonPackagingOptions) {
+  private readonly pythonExec: string;
+
+  constructor(project: Project, options: SetuptoolsOptions) {
     super(project);
+    this.pythonExec = options.pythonExec ?? "python";
 
-    project.addDevDependency("wheel@0.36.2");
-    project.addDevDependency("twine@3.3.0");
+    project.deps.addDependency("wheel@0.36.2", DependencyType.DEVENV);
+    project.deps.addDependency("twine@3.3.0", DependencyType.DEVENV);
 
-    project.packageTask.exec("python setup.py sdist bdist_wheel");
+    project.packageTask.exec(`${this.pythonExec} setup.py sdist bdist_wheel`);
 
     this.publishTestTask = project.addTask("publish:test", {
       description: "Uploads the package against a test PyPI endpoint.",
@@ -33,9 +42,11 @@ export class Setuptools extends Component implements IPythonPackaging {
       exec: "twine upload dist/*",
     });
 
+    const packages = options.packageName ? [options.packageName] : undefined;
+
     new SetupPy(project, {
       name: project.name,
-      packages: [project.moduleName],
+      packages: packages,
       authorName: options.authorName,
       authorEmail: options.authorEmail,
       version: options.version,

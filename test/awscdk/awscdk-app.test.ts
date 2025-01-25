@@ -1,11 +1,11 @@
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { awscdk } from "../../src";
+import { AwsCdkTypeScriptApp, LambdaRuntime } from "../../src/awscdk";
 import { mkdtemp, synthSnapshot } from "../util";
 
 describe("cdkVersion is >= 2.0.0", () => {
   test('use "aws-cdk-lib" the constructs at ^10.0.5', () => {
-    const project = new awscdk.AwsCdkTypeScriptApp({
+    const project = new AwsCdkTypeScriptApp({
       cdkVersion: "2.0.0-rc.1",
       defaultReleaseBranch: "main",
       name: "test",
@@ -23,7 +23,7 @@ describe("cdkVersion is >= 2.0.0", () => {
   });
 
   test("empty context", () => {
-    const project = new awscdk.AwsCdkTypeScriptApp({
+    const project = new AwsCdkTypeScriptApp({
       cdkVersion: "2.0.0-rc.1",
       defaultReleaseBranch: "main",
       name: "test",
@@ -40,14 +40,14 @@ describe("lambda functions", () => {
     mkdirSync(join(outdir, "src"));
     writeFileSync(join(outdir, "src", "my.lambda.ts"), "// dummy");
 
-    const project = new awscdk.AwsCdkTypeScriptApp({
+    const project = new AwsCdkTypeScriptApp({
       name: "hello",
       outdir: outdir,
       defaultReleaseBranch: "main",
       cdkVersion: "1.100.0",
       libdir: "liblib",
       lambdaOptions: {
-        runtime: awscdk.LambdaRuntime.NODEJS_10_X,
+        runtime: LambdaRuntime.NODEJS_18_X,
         bundlingOptions: {
           externals: ["foo", "bar"],
         },
@@ -61,14 +61,14 @@ describe("lambda functions", () => {
       snapshot[".projen/tasks.json"].tasks["bundle:my.lambda"].steps
     ).toStrictEqual([
       {
-        exec: 'esbuild --bundle src/my.lambda.ts --target="node10" --platform="node" --outfile="assets/my.lambda/index.js" --external:foo --external:bar',
+        exec: 'esbuild --bundle src/my.lambda.ts --target="node18" --platform="node" --outfile="assets/my.lambda/index.js" --tsconfig="tsconfig.dev.json" --external:foo --external:bar',
       },
     ]);
   });
 
   test("auto-discover can be disabled", () => {
     // GIVEN
-    const project = new awscdk.AwsCdkTypeScriptApp({
+    const project = new AwsCdkTypeScriptApp({
       name: "hello",
       defaultReleaseBranch: "main",
       cdkVersion: "1.100.0",
@@ -92,11 +92,11 @@ describe("lambda functions", () => {
 });
 
 describe("synth", () => {
-  let project: awscdk.AwsCdkTypeScriptApp;
+  let project: AwsCdkTypeScriptApp;
   let files: Record<string, any>;
 
   beforeEach(() => {
-    project = new awscdk.AwsCdkTypeScriptApp({
+    project = new AwsCdkTypeScriptApp({
       name: "hello",
       defaultReleaseBranch: "main",
       cdkVersion: "1.100.0",
@@ -130,11 +130,11 @@ describe("synth", () => {
 });
 
 describe("watch", () => {
-  let project: awscdk.AwsCdkTypeScriptApp;
+  let project: AwsCdkTypeScriptApp;
   let files: Record<string, any>;
 
   beforeEach(() => {
-    project = new awscdk.AwsCdkTypeScriptApp({
+    project = new AwsCdkTypeScriptApp({
       name: "hello",
       defaultReleaseBranch: "main",
       cdkVersion: "1.100.0",
@@ -163,8 +163,40 @@ describe("watch", () => {
   });
 });
 
+describe("integ-runner", () => {
+  test('adds "integ-runner" to devDependencies', () => {
+    const project = new AwsCdkTypeScriptApp({
+      name: "hello",
+      cdkVersion: "2.12.0",
+      defaultReleaseBranch: "main",
+      experimentalIntegRunner: true,
+    });
+
+    const snapshot = synthSnapshot(project);
+
+    expect(
+      snapshot["package.json"]?.devDependencies["@aws-cdk/integ-runner"]
+    ).toStrictEqual("latest");
+    expect(
+      snapshot["package.json"]?.devDependencies["@aws-cdk/integ-tests-alpha"]
+    ).toStrictEqual("latest");
+    expect(project.tasks.tryFind("integ")?.steps).toEqual([
+      { exec: "integ-runner $@ --language typescript", receiveArgs: true },
+    ]);
+    expect(project.tasks.tryFind("integ:update")?.steps).toEqual([
+      {
+        exec: "integ-runner $@ --language typescript --update-on-failed",
+        receiveArgs: true,
+      },
+    ]);
+    expect(project.testTask.steps).toEqual(
+      expect.arrayContaining([{ spawn: "integ" }])
+    );
+  });
+});
+
 test("CDK v1 usage", () => {
-  const project = new awscdk.AwsCdkTypeScriptApp({
+  const project = new AwsCdkTypeScriptApp({
     cdkVersion: "1.126.0",
     defaultReleaseBranch: "main",
     name: "test",
@@ -174,5 +206,38 @@ test("CDK v1 usage", () => {
   expect(snap["package.json"].dependencies).toStrictEqual({
     "@aws-cdk/core": "^1.126.0",
     constructs: "^3.2.27",
+  });
+});
+
+describe("CDK CLI version", () => {
+  test("can be specified", () => {
+    const project = new AwsCdkTypeScriptApp({
+      cdkVersion: "2.126.0",
+      cdkCliVersion: "3.0.0",
+      defaultReleaseBranch: "main",
+      name: "test",
+    });
+
+    const snap = synthSnapshot(project);
+    expect(snap["package.json"].devDependencies).toEqual(
+      expect.objectContaining({
+        "aws-cdk": "3.0.0",
+      })
+    );
+  });
+
+  test("defaults to ^2 if not specified", () => {
+    const project = new AwsCdkTypeScriptApp({
+      cdkVersion: "2.126.0",
+      defaultReleaseBranch: "main",
+      name: "test",
+    });
+
+    const snap = synthSnapshot(project);
+    expect(snap["package.json"].devDependencies).toEqual(
+      expect.objectContaining({
+        "aws-cdk": "^2",
+      })
+    );
   });
 });

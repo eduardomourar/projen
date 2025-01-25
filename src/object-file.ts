@@ -1,5 +1,6 @@
+import { IConstruct } from "constructs";
 import { FileBase, FileBaseOptions, IResolver } from "./file";
-import { Project } from "./project";
+import { JsonPatch } from "./json-patch";
 import { deepMerge } from "./util";
 
 /**
@@ -10,7 +11,13 @@ export interface ObjectFileOptions extends FileBaseOptions {
    * The object that will be serialized. You can modify the object's contents
    * before synthesis.
    *
-   * @default {} an empty object (use `file.obj` to mutate).
+   * Serialization of the object is similar to JSON.stringify with few enhancements:
+   * - values that are functions will be called during synthesis and the result will be serialized - this allow to have lazy values.
+   * - `Set` will be converted to array
+   * - `Map` will be converted to a plain object ({ key: value, ... }})
+   * - `RegExp` without flags will be converted to string representation of the source
+   *
+   *  @default {} an empty object (use `file.obj` to mutate).
    */
   readonly obj?: any;
 
@@ -41,12 +48,18 @@ export abstract class ObjectFile extends FileBase {
    */
   public readonly omitEmpty: boolean;
 
-  constructor(project: Project, filePath: string, options: ObjectFileOptions) {
-    super(project, filePath, options);
+  /**
+   * patches to be applied to `obj` after the resolver is called
+   */
+  private readonly patchOperations: Array<JsonPatch[]>;
+
+  constructor(scope: IConstruct, filePath: string, options: ObjectFileOptions) {
+    super(scope, filePath, options);
 
     this.obj = options.obj ?? {};
     this.omitEmpty = options.omitEmpty ?? false;
     this.rawOverrides = {};
+    this.patchOperations = [];
   }
 
   /**
@@ -170,8 +183,44 @@ export abstract class ObjectFile extends FileBase {
     if (Array.isArray(curr[lastKey])) {
       curr[lastKey].push(...values);
     } else {
-      curr[lastKey] = { __$APPEND: values };
+      curr[lastKey] = {
+        __$APPEND: [...(curr[lastKey]?.__$APPEND ?? []), ...values],
+      };
     }
+  }
+
+  /**
+   * Applies an RFC 6902 JSON-patch to the synthesized object file.
+   * See https://datatracker.ietf.org/doc/html/rfc6902 for more information.
+   *
+   * For example, with the following object file
+   * ```json
+   * "compilerOptions": {
+   *   "exclude": ["node_modules"],
+   *   "lib": ["es2019"]
+   *   ...
+   * }
+   * ...
+   * ```
+   *
+   * ```typescript
+   * project.tsconfig.file.patch(JsonPatch.add("/compilerOptions/exclude/-", "coverage"));
+   * project.tsconfig.file.patch(JsonPatch.replace("/compilerOptions/lib", ["dom", "dom.iterable", "esnext"]));
+   * ```
+   * would result in the following object file
+   * ```json
+   * "compilerOptions": {
+   *   "exclude": ["node_modules", "coverage"],
+   *   "lib": ["dom", "dom.iterable", "esnext"]
+   *   ...
+   * }
+   * ...
+   * ```
+   *
+   * @param patches - The patch operations to apply
+   */
+  public patch(...patches: JsonPatch[]) {
+    this.patchOperations.push(patches);
   }
 
   /**
@@ -194,7 +243,11 @@ export abstract class ObjectFile extends FileBase {
       deepMerge([resolved, this.rawOverrides], true);
     }
 
-    return resolved ? JSON.stringify(resolved, undefined, 2) : undefined;
+    let patched = resolved;
+    for (const operation of this.patchOperations) {
+      patched = JsonPatch.apply(patched, ...operation);
+    }
+    return patched ? JSON.stringify(patched, undefined, 2) : undefined;
   }
 }
 
