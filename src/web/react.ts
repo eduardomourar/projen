@@ -69,7 +69,7 @@ export interface ReactProjectOptions
 }
 
 /**
- * React project without TypeScript.
+ * React project using JavaScript.
  *
  * @pjid react
  */
@@ -104,7 +104,7 @@ export class ReactProject extends NodeProject {
 }
 
 /**
- * React project with TypeScript.
+ * React project using TypeScript.
  *
  * @pjid react-ts
  */
@@ -117,7 +117,7 @@ export class ReactTypeScriptProject extends TypeScriptAppProject {
   constructor(options: ReactTypeScriptProjectOptions) {
     const defaultOptions = {
       srcdir: "src",
-      eslint: false,
+      eslint: true,
       jest: false,
       tsconfig: {
         include: ["src"],
@@ -153,6 +153,17 @@ export class ReactTypeScriptProject extends TypeScriptAppProject {
 
     this.srcdir = options.srcdir ?? "src";
 
+    this.eslint?.addRules({
+      "import/no-extraneous-dependencies": [
+        "error",
+        {
+          devDependencies: ["**/src/**/*.test.tsx", "**/src/setupTests.ts"],
+          optionalDependencies: false,
+          peerDependencies: true,
+        },
+      ],
+    });
+
     new ReactComponent(this, { typescript: true, rewire: options.rewire });
 
     // generate sample code in `src` and `public` if these directories are empty or non-existent.
@@ -165,6 +176,12 @@ export class ReactTypeScriptProject extends TypeScriptAppProject {
         sourceDir: path.join(__dirname, "..", "..", "assets", "web", "react"),
       });
     }
+
+    this.package.addPackageResolutions(
+      // https://github.com/DefinitelyTyped/DefinitelyTyped/issues/62300
+      "@types/express@4.17.13",
+      "@types/express-serve-static-core@4.17.30"
+    );
   }
 }
 
@@ -188,8 +205,9 @@ export class ReactComponent extends Component {
     // No compile for react app
     project.compileTask.reset();
 
-    project.addDeps("react", "react-dom", "react-scripts@^5", "web-vitals");
+    project.addDeps("react", "react-dom", "web-vitals");
     project.addDevDeps(
+      "react-scripts@^5",
       "@testing-library/jest-dom",
       "@testing-library/react",
       "@testing-library/user-event"

@@ -5,11 +5,11 @@ import {
   CdkConfigCommonOptions,
   CdkTasks,
 } from ".";
-import { Component, DependencyType, SampleDir, SourceCode } from "..";
-import { Pytest } from "../python/pytest";
-import { PythonProject, PythonProjectOptions } from "../python/python-project";
+import { Component, DependencyType, SampleDir, SampleFile } from "..";
 import { AwsCdkDepsPy } from "./awscdk-deps-py";
 import { AwsCdkPytestSample } from "./awscdk-pytest-sample";
+import { Pytest } from "../python/pytest";
+import { PythonProject, PythonProjectOptions } from "../python/python-project";
 
 /**
  * Options for `AwsCdkPythonApp`
@@ -29,6 +29,7 @@ export interface AwsCdkPythonAppOptions
    * Python sources directory.
    *
    * @default "tests"
+   * @deprecated Use `sampleTestdir` instead.
    */
   readonly testdir?: string;
 }
@@ -58,8 +59,14 @@ export class AwsCdkPythonApp extends PythonProject {
 
   /**
    * The directory in which the python tests reside.
+   * @deprecated Use `sampleTestdir` instead.
    */
   public readonly testdir: string;
+
+  /**
+   * The directory in which the python sample tests reside.
+   */
+  public readonly sampleTestdir: string;
 
   /**
    * The CDK version this app is using.
@@ -76,7 +83,8 @@ export class AwsCdkPythonApp extends PythonProject {
       ...options,
     });
     this.appEntrypoint = options.appEntrypoint ?? "app.py";
-    this.testdir = options.testdir ?? "tests";
+    this.testdir = this.sampleTestdir =
+      options.sampleTestdir ?? options.testdir ?? "tests";
 
     this.cdkTasks = new CdkTasks(this);
     this.postCompileTask.spawn(this.cdkTasks.synthSilent);
@@ -98,13 +106,13 @@ export class AwsCdkPythonApp extends PythonProject {
     });
 
     if (options.sample ?? true) {
-      new AppCode(this, "app.py", this.cdkDeps.cdkMajorVersion);
+      new AppCode(this, this.appEntrypoint, this.cdkDeps.cdkMajorVersion);
       new MyStackCode(this, this.moduleName, this.cdkDeps.cdkMajorVersion);
     }
 
     if (options.pytest ?? true) {
       this.pytest = new Pytest(this, options.pytestOptions);
-      new AwsCdkPytestSample(this, this.pytest.testdir);
+      new AwsCdkPytestSample(this, this.sampleTestdir);
     }
   }
 }
@@ -113,29 +121,32 @@ class AppCode extends Component {
   constructor(project: AwsCdkPythonApp, fileName: string, cdkVersion: number) {
     super(project);
 
-    const src = new SourceCode(project, fileName, {
-      readonly: false,
-    });
-
-    src.line("import os");
+    let versionImport: string;
     if (cdkVersion < 2) {
-      src.line("from aws_cdk.core import App, Environment");
+      versionImport = "from aws_cdk.core import App, Environment";
     } else {
-      src.line("from aws_cdk import App, Environment");
+      versionImport = "from aws_cdk import App, Environment";
     }
-    src.line(`from ${project.moduleName}.main import MyStack`);
-    src.line("");
-    src.line("# for development, use account/region from cdk cli");
-    src.open("dev_env = Environment(");
-    src.line("account=os.getenv('CDK_DEFAULT_ACCOUNT'),");
-    src.line("region=os.getenv('CDK_DEFAULT_REGION'),");
-    src.close(")");
-    src.line("");
-    src.line("app = App()");
-    src.line(`MyStack(app, "${this.project.name}-dev", env=dev_env)`);
-    src.line(`# MyStack(app, "${this.project.name}-prod", env=prod_env)`);
-    src.line("");
-    src.line("app.synth()");
+
+    new SampleFile(project, fileName, {
+      contents: [
+        "import os",
+        versionImport,
+        `from ${project.moduleName}.main import MyStack`,
+        "",
+        "# for development, use account/region from cdk cli",
+        "dev_env = Environment(",
+        "  account=os.getenv('CDK_DEFAULT_ACCOUNT'),",
+        "  region=os.getenv('CDK_DEFAULT_REGION')",
+        ")",
+        "",
+        "app = App()",
+        `MyStack(app, "${this.project.name}-dev", env=dev_env)`,
+        `# MyStack(app, "${this.project.name}-prod", env=prod_env)`,
+        "",
+        "app.synth()",
+      ].join("\n"),
+    });
   }
 }
 
@@ -154,7 +165,6 @@ class MyStackCode extends Component {
     appFile.push("");
     appFile.push("");
     appFile.push("class MyStack(Stack):");
-    appFile.push("");
     appFile.push(
       "  def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:"
     );
