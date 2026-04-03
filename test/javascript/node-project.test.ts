@@ -1925,11 +1925,11 @@ describe("package manager env", () => {
     },
     {
       packageManager: NodePackageManager.YARN2,
-      cmd: '$(npx -c "node --print process.env.PATH")',
+      cmd: "$(yarn exec node --print process.env.PATH)",
     },
     {
       packageManager: NodePackageManager.YARN_BERRY,
-      cmd: '$(npx -c "node --print process.env.PATH")',
+      cmd: "$(yarn exec node --print process.env.PATH)",
     },
     {
       packageManager: NodePackageManager.PNPM,

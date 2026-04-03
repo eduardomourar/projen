@@ -611,6 +611,9 @@ export class NodeProject extends GitHubProject {
 
     const envCommand = (() => {
       switch (this.packageManager) {
+        case NodePackageManager.YARN_BERRY:
+        case NodePackageManager.YARN2:
+          return "$(yarn exec node --print process.env.PATH)";
         case NodePackageManager.PNPM:
           return '$(pnpm -c exec "node --print process.env.PATH")';
         case NodePackageManager.BUN:
