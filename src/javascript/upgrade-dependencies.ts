@@ -7,7 +7,12 @@ import type {
   workflows,
 } from "../github";
 import { GitHub, WorkflowJobs, WorkflowSteps } from "../github";
-import { isYarnClassic, isYarnBerry, isNpm } from "./util";
+import {
+  isYarnClassic,
+  isYarnBerry,
+  isNpm,
+  executeCommandPriorInstallation,
+} from "./util";
 import { DEFAULT_GITHUB_ACTIONS_USER } from "../github/constants";
 import { projectPathRelativeToRepoRoot } from "../github/private/util";
 import { WorkflowActions } from "../github/workflow-actions";
@@ -363,24 +368,8 @@ export class UpgradeDependencies extends Component {
       removeRange?: boolean;
     } = {},
   ): string {
-    function executeCommand(packageManager: NodePackageManager): string {
-      switch (packageManager) {
-        case NodePackageManager.NPM:
-        case NodePackageManager.YARN:
-        case NodePackageManager.YARN_CLASSIC:
-          return "npx";
-        case NodePackageManager.PNPM:
-          return "pnpm dlx";
-        case NodePackageManager.YARN2:
-        case NodePackageManager.YARN_BERRY:
-          return "yarn dlx";
-        case NodePackageManager.BUN:
-          return "bunx";
-      }
-    }
-
     const command = [
-      `${executeCommand(
+      `${executeCommandPriorInstallation(
         this.project.package.packageManager,
       )} npm-check-updates@20`,
     ];

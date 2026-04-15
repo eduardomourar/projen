@@ -63,6 +63,29 @@ export function execCommand(
 }
 
 /**
+ * Returns the command to execute a binary with the given package manager, without requiring installation of that binary as a project dependency.
+ * @param packageManager The package manager to use when executing the command.
+ */
+export function executeCommandPriorInstallation(
+  packageManager: NodePackageManager,
+): string {
+  switch (packageManager) {
+    case NodePackageManager.PNPM:
+      return "pnpm dlx";
+    case NodePackageManager.YARN2:
+    case NodePackageManager.YARN_BERRY:
+      return "yarn dlx";
+    case NodePackageManager.BUN:
+      return "bunx";
+    case NodePackageManager.NPM:
+    case NodePackageManager.YARN:
+    case NodePackageManager.YARN_CLASSIC:
+    default:
+      return "npx";
+  }
+}
+
+/**
  * Basic interface for `package.json`.
  */
 interface PackageManifest {

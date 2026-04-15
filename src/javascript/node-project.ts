@@ -27,7 +27,12 @@ import type {
 import { AutoMerge, GitHub, GitHubProject } from "../github";
 import type { BiomeOptions } from "./biome/biome";
 import { Biome } from "./biome/biome";
-import { execCommand, isYarnBerry, isYarnClassic } from "./util";
+import {
+  execCommand,
+  executeCommandPriorInstallation,
+  isYarnBerry,
+  isYarnClassic,
+} from "./util";
 import { DEFAULT_GITHUB_ACTIONS_USER } from "../github/constants";
 import { ensureNotHiddenPath, secretToString } from "../github/private/util";
 import type {
@@ -1143,6 +1148,8 @@ export class NodeProject extends GitHubProject {
       authProvider: codeArtifactOptions?.authProvider,
     };
 
+    const executeProjenCommand = `${executeCommandPriorInstallation(this.packageManager)} projen`;
+
     if (
       parsedCodeArtifactOptions.authProvider ===
       NodePackageCodeArtifactAuthProvider.GITHUB_OIDC
@@ -1159,7 +1166,7 @@ export class NodeProject extends GitHubProject {
         },
         {
           name: "AWS CodeArtifact Login",
-          run: `${this.runScriptCommand} ca:login`,
+          run: `${executeProjenCommand} ca:login`,
         },
       ];
     }
@@ -1183,7 +1190,7 @@ export class NodeProject extends GitHubProject {
         },
         {
           name: "AWS CodeArtifact Login",
-          run: `${this.runScriptCommand} ca:login`,
+          run: `${executeProjenCommand} ca:login`,
         },
       ];
     }
@@ -1191,7 +1198,7 @@ export class NodeProject extends GitHubProject {
     return [
       {
         name: "AWS CodeArtifact Login",
-        run: `${this.runScriptCommand} ca:login`,
+        run: `${executeProjenCommand} ca:login`,
         env: {
           AWS_ACCESS_KEY_ID: secretToString(
             parsedCodeArtifactOptions.accessKeyIdSecret,
