@@ -272,6 +272,7 @@ Test whether the given construct is a component.
 | <code><a href="#projen.build.BuildWorkflow.property.project">project</a></code> | <code>projen.Project</code> | *No description.* |
 | <code><a href="#projen.build.BuildWorkflow.property.buildJobIds">buildJobIds</a></code> | <code>string[]</code> | Returns a list of job IDs that are part of the build. |
 | <code><a href="#projen.build.BuildWorkflow.property.name">name</a></code> | <code>string</code> | Name of generated github workflow. |
+| <code><a href="#projen.build.BuildWorkflow.property.workflow">workflow</a></code> | <code>projen.github.GithubWorkflow</code> | The underlying GitHub Actions workflow. |
 
 ---
 
@@ -318,6 +319,18 @@ public readonly name: string;
 - *Type:* string
 
 Name of generated github workflow.
+
+---
+
+##### `workflow`<sup>Required</sup> <a name="workflow" id="projen.build.BuildWorkflow.property.workflow"></a>
+
+```typescript
+public readonly workflow: GithubWorkflow;
+```
+
+- *Type:* projen.github.GithubWorkflow
+
+The underlying GitHub Actions workflow.
 
 ---
 
