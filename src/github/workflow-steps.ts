@@ -3,6 +3,26 @@ import type { JobStepConfiguration, JobStep } from "./workflows-model";
 import { removeNullOrUndefinedProperties } from "../util/object";
 
 /**
+ * Whether to checkout Git submodules in CI workflows.
+ */
+export enum CheckoutSubmodules {
+  /**
+   * Don't checkout submodules.
+   */
+  DISABLED = "false",
+
+  /**
+   * Checkout only top-level submodules.
+   */
+  ENABLED = "true",
+
+  /**
+   * Checkout submodules recursively.
+   */
+  RECURSIVE = "recursive",
+}
+
+/**
  * A collection of very commonly used, individual, GitHub Workflow Job steps.
  */
 export class WorkflowSteps {
@@ -20,6 +40,15 @@ export class WorkflowSteps {
       repository: options?.with?.repository,
       path: options?.with?.path,
       ...(options?.with?.lfs ? { lfs: true } : {}),
+      ...(options?.with?.submodules &&
+      options.with.submodules !== CheckoutSubmodules.DISABLED
+        ? {
+            submodules:
+              options.with.submodules === CheckoutSubmodules.RECURSIVE
+                ? "recursive"
+                : true,
+          }
+        : {}),
     });
 
     return {
@@ -184,6 +213,13 @@ export interface CheckoutWith {
    * @default false
    */
   readonly lfs?: boolean;
+
+  /**
+   * Whether to checkout Git submodules.
+   *
+   * @default CheckoutSubmodules.DISABLED
+   */
+  readonly submodules?: CheckoutSubmodules;
 
   /**
    * Branch or tag name.

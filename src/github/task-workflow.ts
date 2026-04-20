@@ -65,6 +65,8 @@ export class TaskWorkflow extends GithubWorkflow {
     const job = new TaskWorkflowJob(this, options.task, {
       ...options,
       downloadLfs: options.downloadLfs ?? github.downloadLfs,
+      checkoutSubmodules:
+        options.checkoutSubmodules ?? github.checkoutSubmodules,
     });
 
     this.addJobs({ [this.jobId]: job });

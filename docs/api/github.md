@@ -1316,6 +1316,7 @@ Returns the `GitHub` component of a project or `undefined` if the project does n
 | <code><a href="#projen.github.GitHub.property.node">node</a></code> | <code>constructs.Node</code> | The tree node. |
 | <code><a href="#projen.github.GitHub.property.project">project</a></code> | <code>projen.Project</code> | *No description.* |
 | <code><a href="#projen.github.GitHub.property.actions">actions</a></code> | <code><a href="#projen.github.GitHubActionsProvider">GitHubActionsProvider</a></code> | The GitHub Actions provider used to manage the versions of actions used in steps. |
+| <code><a href="#projen.github.GitHub.property.checkoutSubmodules">checkoutSubmodules</a></code> | <code><a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a></code> | Whether checking out Git submodules is enabled for this GitHub project. |
 | <code><a href="#projen.github.GitHub.property.downloadLfs">downloadLfs</a></code> | <code>boolean</code> | Whether downloading from LFS is enabled for this GitHub project. |
 | <code><a href="#projen.github.GitHub.property.projenCredentials">projenCredentials</a></code> | <code><a href="#projen.github.GithubCredentials">GithubCredentials</a></code> | GitHub API authentication method used by projen workflows. |
 | <code><a href="#projen.github.GitHub.property.workflows">workflows</a></code> | <code><a href="#projen.github.GithubWorkflow">GithubWorkflow</a>[]</code> | All workflows. |
@@ -1356,6 +1357,18 @@ public readonly actions: GitHubActionsProvider;
 - *Type:* <a href="#projen.github.GitHubActionsProvider">GitHubActionsProvider</a>
 
 The GitHub Actions provider used to manage the versions of actions used in steps.
+
+---
+
+##### `checkoutSubmodules`<sup>Required</sup> <a name="checkoutSubmodules" id="projen.github.GitHub.property.checkoutSubmodules"></a>
+
+```typescript
+public readonly checkoutSubmodules: CheckoutSubmodules;
+```
+
+- *Type:* <a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a>
+
+Whether checking out Git submodules is enabled for this GitHub project.
 
 ---
 
@@ -5574,6 +5587,7 @@ const checkoutWith: github.CheckoutWith = { ... }
 | <code><a href="#projen.github.CheckoutWith.property.path">path</a></code> | <code>string</code> | Relative path under $GITHUB_WORKSPACE to place the repository. |
 | <code><a href="#projen.github.CheckoutWith.property.ref">ref</a></code> | <code>string</code> | Branch or tag name. |
 | <code><a href="#projen.github.CheckoutWith.property.repository">repository</a></code> | <code>string</code> | The repository (owner/repo) to use. |
+| <code><a href="#projen.github.CheckoutWith.property.submodules">submodules</a></code> | <code><a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a></code> | Whether to checkout Git submodules. |
 | <code><a href="#projen.github.CheckoutWith.property.token">token</a></code> | <code>string</code> | A GitHub token to use when checking out the repository. |
 
 ---
@@ -5645,6 +5659,19 @@ The repository (owner/repo) to use.
 
 ---
 
+##### `submodules`<sup>Optional</sup> <a name="submodules" id="projen.github.CheckoutWith.property.submodules"></a>
+
+```typescript
+public readonly submodules: CheckoutSubmodules;
+```
+
+- *Type:* <a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a>
+- *Default:* CheckoutSubmodules.DISABLED
+
+Whether to checkout Git submodules.
+
+---
+
 ##### `token`<sup>Optional</sup> <a name="token" id="projen.github.CheckoutWith.property.token"></a>
 
 ```typescript
@@ -5682,6 +5709,7 @@ const checkoutWithPatchOptions: github.CheckoutWithPatchOptions = { ... }
 | <code><a href="#projen.github.CheckoutWithPatchOptions.property.path">path</a></code> | <code>string</code> | Relative path under $GITHUB_WORKSPACE to place the repository. |
 | <code><a href="#projen.github.CheckoutWithPatchOptions.property.ref">ref</a></code> | <code>string</code> | Branch or tag name. |
 | <code><a href="#projen.github.CheckoutWithPatchOptions.property.repository">repository</a></code> | <code>string</code> | The repository (owner/repo) to use. |
+| <code><a href="#projen.github.CheckoutWithPatchOptions.property.submodules">submodules</a></code> | <code><a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a></code> | Whether to checkout Git submodules. |
 | <code><a href="#projen.github.CheckoutWithPatchOptions.property.token">token</a></code> | <code>string</code> | A GitHub token to use when checking out the repository. |
 | <code><a href="#projen.github.CheckoutWithPatchOptions.property.patchFile">patchFile</a></code> | <code>string</code> | The name of the artifact the patch is stored as. |
 
@@ -5751,6 +5779,19 @@ public readonly repository: string;
 - *Default:* the default repository is implicitly used
 
 The repository (owner/repo) to use.
+
+---
+
+##### `submodules`<sup>Optional</sup> <a name="submodules" id="projen.github.CheckoutWithPatchOptions.property.submodules"></a>
+
+```typescript
+public readonly submodules: CheckoutSubmodules;
+```
+
+- *Type:* <a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a>
+- *Default:* CheckoutSubmodules.DISABLED
+
+Whether to checkout Git submodules.
 
 ---
 
@@ -7366,6 +7407,7 @@ const gitHubOptions: github.GitHubOptions = { ... }
 
 | **Name** | **Type** | **Description** |
 | --- | --- | --- |
+| <code><a href="#projen.github.GitHubOptions.property.checkoutSubmodules">checkoutSubmodules</a></code> | <code><a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a></code> | Whether to checkout Git submodules. |
 | <code><a href="#projen.github.GitHubOptions.property.dependencyReview">dependencyReview</a></code> | <code>boolean</code> | Enable the dependency-review-action workflow on pull requests. |
 | <code><a href="#projen.github.GitHubOptions.property.dependencyReviewOptions">dependencyReviewOptions</a></code> | <code><a href="#projen.github.DependencyReviewOptions">DependencyReviewOptions</a></code> | Options for the dependency review workflow. |
 | <code><a href="#projen.github.GitHubOptions.property.downloadLfs">downloadLfs</a></code> | <code>boolean</code> | Download files in LFS in workflows. |
@@ -7380,6 +7422,19 @@ const gitHubOptions: github.GitHubOptions = { ... }
 | <code><a href="#projen.github.GitHubOptions.property.pullRequestLint">pullRequestLint</a></code> | <code>boolean</code> | Add a workflow that performs basic checks for pull requests, like validating that PRs follow Conventional Commits. |
 | <code><a href="#projen.github.GitHubOptions.property.pullRequestLintOptions">pullRequestLintOptions</a></code> | <code><a href="#projen.github.PullRequestLintOptions">PullRequestLintOptions</a></code> | Options for configuring a pull request linter. |
 | <code><a href="#projen.github.GitHubOptions.property.workflows">workflows</a></code> | <code>boolean</code> | Enables GitHub workflows. |
+
+---
+
+##### `checkoutSubmodules`<sup>Optional</sup> <a name="checkoutSubmodules" id="projen.github.GitHubOptions.property.checkoutSubmodules"></a>
+
+```typescript
+public readonly checkoutSubmodules: CheckoutSubmodules;
+```
+
+- *Type:* <a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a>
+- *Default:* CheckoutSubmodules.DISABLED
+
+Whether to checkout Git submodules.
 
 ---
 
@@ -9048,6 +9103,7 @@ const pullRequestPatchSource: github.PullRequestPatchSource = { ... }
 | <code><a href="#projen.github.PullRequestPatchSource.property.path">path</a></code> | <code>string</code> | Relative path under $GITHUB_WORKSPACE to place the repository. |
 | <code><a href="#projen.github.PullRequestPatchSource.property.ref">ref</a></code> | <code>string</code> | Branch or tag name. |
 | <code><a href="#projen.github.PullRequestPatchSource.property.repository">repository</a></code> | <code>string</code> | The repository (owner/repo) to use. |
+| <code><a href="#projen.github.PullRequestPatchSource.property.submodules">submodules</a></code> | <code><a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a></code> | Whether to checkout Git submodules. |
 | <code><a href="#projen.github.PullRequestPatchSource.property.token">token</a></code> | <code>string</code> | A GitHub token to use when checking out the repository. |
 | <code><a href="#projen.github.PullRequestPatchSource.property.patchFile">patchFile</a></code> | <code>string</code> | The name of the artifact the patch is stored as. |
 | <code><a href="#projen.github.PullRequestPatchSource.property.jobId">jobId</a></code> | <code>string</code> | The id of the job that created the patch file. |
@@ -9119,6 +9175,19 @@ public readonly repository: string;
 - *Default:* the default repository is implicitly used
 
 The repository (owner/repo) to use.
+
+---
+
+##### `submodules`<sup>Optional</sup> <a name="submodules" id="projen.github.PullRequestPatchSource.property.submodules"></a>
+
+```typescript
+public readonly submodules: CheckoutSubmodules;
+```
+
+- *Type:* <a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a>
+- *Default:* CheckoutSubmodules.DISABLED
+
+Whether to checkout Git submodules.
 
 ---
 
@@ -9645,6 +9714,7 @@ const taskWorkflowJobOptions: github.TaskWorkflowJobOptions = { ... }
 | --- | --- | --- |
 | <code><a href="#projen.github.TaskWorkflowJobOptions.property.permissions">permissions</a></code> | <code><a href="#projen.github.workflows.JobPermissions">JobPermissions</a></code> | Permissions for the build job. |
 | <code><a href="#projen.github.TaskWorkflowJobOptions.property.artifactsDirectory">artifactsDirectory</a></code> | <code>string</code> | A directory name which contains artifacts to be uploaded (e.g. `dist`). If this is set, the contents of this directory will be uploaded as an artifact at the end of the workflow run, even if other steps fail. |
+| <code><a href="#projen.github.TaskWorkflowJobOptions.property.checkoutSubmodules">checkoutSubmodules</a></code> | <code><a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a></code> | Whether to checkout Git submodules. |
 | <code><a href="#projen.github.TaskWorkflowJobOptions.property.checkoutWith">checkoutWith</a></code> | <code><a href="#projen.github.CheckoutWith">CheckoutWith</a></code> | Override for the `with` property of the source code checkout step. |
 | <code><a href="#projen.github.TaskWorkflowJobOptions.property.condition">condition</a></code> | <code>string</code> | Adds an 'if' condition to the workflow. |
 | <code><a href="#projen.github.TaskWorkflowJobOptions.property.container">container</a></code> | <code><a href="#projen.github.workflows.ContainerOptions">ContainerOptions</a></code> | *No description.* |
@@ -9684,6 +9754,19 @@ public readonly artifactsDirectory: string;
 - *Default:* not set
 
 A directory name which contains artifacts to be uploaded (e.g. `dist`). If this is set, the contents of this directory will be uploaded as an artifact at the end of the workflow run, even if other steps fail.
+
+---
+
+##### `checkoutSubmodules`<sup>Optional</sup> <a name="checkoutSubmodules" id="projen.github.TaskWorkflowJobOptions.property.checkoutSubmodules"></a>
+
+```typescript
+public readonly checkoutSubmodules: CheckoutSubmodules;
+```
+
+- *Type:* <a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a>
+- *Default:* Use the setting on the corresponding GitHub project
+
+Whether to checkout Git submodules.
 
 ---
 
@@ -9882,6 +9965,7 @@ const taskWorkflowOptions: github.TaskWorkflowOptions = { ... }
 | --- | --- | --- |
 | <code><a href="#projen.github.TaskWorkflowOptions.property.permissions">permissions</a></code> | <code><a href="#projen.github.workflows.JobPermissions">JobPermissions</a></code> | Permissions for the build job. |
 | <code><a href="#projen.github.TaskWorkflowOptions.property.artifactsDirectory">artifactsDirectory</a></code> | <code>string</code> | A directory name which contains artifacts to be uploaded (e.g. `dist`). If this is set, the contents of this directory will be uploaded as an artifact at the end of the workflow run, even if other steps fail. |
+| <code><a href="#projen.github.TaskWorkflowOptions.property.checkoutSubmodules">checkoutSubmodules</a></code> | <code><a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a></code> | Whether to checkout Git submodules. |
 | <code><a href="#projen.github.TaskWorkflowOptions.property.checkoutWith">checkoutWith</a></code> | <code><a href="#projen.github.CheckoutWith">CheckoutWith</a></code> | Override for the `with` property of the source code checkout step. |
 | <code><a href="#projen.github.TaskWorkflowOptions.property.condition">condition</a></code> | <code>string</code> | Adds an 'if' condition to the workflow. |
 | <code><a href="#projen.github.TaskWorkflowOptions.property.container">container</a></code> | <code><a href="#projen.github.workflows.ContainerOptions">ContainerOptions</a></code> | *No description.* |
@@ -9925,6 +10009,19 @@ public readonly artifactsDirectory: string;
 - *Default:* not set
 
 A directory name which contains artifacts to be uploaded (e.g. `dist`). If this is set, the contents of this directory will be uploaded as an artifact at the end of the workflow run, even if other steps fail.
+
+---
+
+##### `checkoutSubmodules`<sup>Optional</sup> <a name="checkoutSubmodules" id="projen.github.TaskWorkflowOptions.property.checkoutSubmodules"></a>
+
+```typescript
+public readonly checkoutSubmodules: CheckoutSubmodules;
+```
+
+- *Type:* <a href="#projen.github.CheckoutSubmodules">CheckoutSubmodules</a>
+- *Default:* Use the setting on the corresponding GitHub project
+
+Whether to checkout Git submodules.
 
 ---
 
@@ -11022,6 +11119,41 @@ public render(): string[]
 
 
 ## Enums <a name="Enums" id="Enums"></a>
+
+### CheckoutSubmodules <a name="CheckoutSubmodules" id="projen.github.CheckoutSubmodules"></a>
+
+Whether to checkout Git submodules in CI workflows.
+
+#### Members <a name="Members" id="Members"></a>
+
+| **Name** | **Description** |
+| --- | --- |
+| <code><a href="#projen.github.CheckoutSubmodules.DISABLED">DISABLED</a></code> | Don't checkout submodules. |
+| <code><a href="#projen.github.CheckoutSubmodules.ENABLED">ENABLED</a></code> | Checkout only top-level submodules. |
+| <code><a href="#projen.github.CheckoutSubmodules.RECURSIVE">RECURSIVE</a></code> | Checkout submodules recursively. |
+
+---
+
+##### `DISABLED` <a name="DISABLED" id="projen.github.CheckoutSubmodules.DISABLED"></a>
+
+Don't checkout submodules.
+
+---
+
+
+##### `ENABLED` <a name="ENABLED" id="projen.github.CheckoutSubmodules.ENABLED"></a>
+
+Checkout only top-level submodules.
+
+---
+
+
+##### `RECURSIVE` <a name="RECURSIVE" id="projen.github.CheckoutSubmodules.RECURSIVE"></a>
+
+Checkout submodules recursively.
+
+---
+
 
 ### DependabotGroupAppliesTo <a name="DependabotGroupAppliesTo" id="projen.github.DependabotGroupAppliesTo"></a>
 

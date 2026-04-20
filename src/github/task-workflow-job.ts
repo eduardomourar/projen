@@ -2,7 +2,7 @@ import type { IConstruct } from "constructs";
 import { DEFAULT_GITHUB_ACTIONS_USER } from "./constants";
 import type { GitIdentity } from "./task-workflow";
 import type { CheckoutWith } from "./workflow-steps";
-import { WorkflowSteps } from "./workflow-steps";
+import { CheckoutSubmodules, WorkflowSteps } from "./workflow-steps";
 import type {
   ContainerOptions,
   Job,
@@ -117,6 +117,13 @@ export interface TaskWorkflowJobOptions {
   readonly downloadLfs?: boolean;
 
   /**
+   * Whether to checkout Git submodules.
+   *
+   * @default - Use the setting on the corresponding GitHub project
+   */
+  readonly checkoutSubmodules?: CheckoutSubmodules;
+
+  /**
    * Default settings for all steps in the TaskWorkflow Job.
    */
   readonly jobDefaults?: JobDefaults;
@@ -163,11 +170,17 @@ export class TaskWorkflowJob extends Component {
     super(scope, `${new.target.name}#${task.name}`);
     const preCheckoutSteps = options.preCheckoutSteps ?? [];
 
-    const checkoutWith: { lfs?: boolean } = {};
+    const checkoutWith: { lfs?: boolean; submodules?: CheckoutSubmodules } = {};
     if (options.downloadLfs) {
       checkoutWith.lfs = true;
     }
-    // 'checkoutWith' can override 'lfs'
+    if (
+      options.checkoutSubmodules &&
+      options.checkoutSubmodules !== CheckoutSubmodules.DISABLED
+    ) {
+      checkoutWith.submodules = options.checkoutSubmodules;
+    }
+    // 'checkoutWith' can override 'lfs' and 'submodules'
     Object.assign(checkoutWith, options.checkoutWith ?? {});
 
     const preBuildSteps = options.preBuildSteps ?? [];

@@ -13,6 +13,7 @@ import type { PullRequestBackportOptions } from "./pull-request-backport";
 import { PullRequestBackport } from "./pull-request-backport";
 import type { PullRequestLintOptions } from "./pull-request-lint";
 import { PullRequestLint } from "./pull-request-lint";
+import { CheckoutSubmodules } from "./workflow-steps";
 import { GithubWorkflow } from "./workflows";
 import { Component } from "../component";
 import type { Project } from "../project";
@@ -130,6 +131,13 @@ export interface GitHubOptions {
    * @default - default options
    */
   readonly dependencyReviewOptions?: DependencyReviewOptions;
+
+  /**
+   * Whether to checkout Git submodules.
+   *
+   * @default CheckoutSubmodules.DISABLED
+   */
+  readonly checkoutSubmodules?: CheckoutSubmodules;
 }
 
 export class GitHub extends Component {
@@ -170,6 +178,7 @@ export class GitHub extends Component {
   public readonly actions: GitHubActionsProvider;
 
   private readonly _downloadLfs?: boolean;
+  private readonly _checkoutSubmodules?: CheckoutSubmodules;
 
   public constructor(project: Project, options: GitHubOptions = {}) {
     super(project);
@@ -179,6 +188,7 @@ export class GitHub extends Component {
     this.workflowsEnabled = options.workflows ?? true;
 
     this._downloadLfs = options.downloadLfs;
+    this._checkoutSubmodules = options.checkoutSubmodules;
 
     if (options.projenCredentials && options.projenTokenSecret) {
       throw new Error(
@@ -268,5 +278,12 @@ export class GitHub extends Component {
    */
   public get downloadLfs() {
     return this._downloadLfs ?? this.project.gitattributes.hasLfsPatterns;
+  }
+
+  /**
+   * Whether checking out Git submodules is enabled for this GitHub project.
+   */
+  public get checkoutSubmodules(): CheckoutSubmodules {
+    return this._checkoutSubmodules ?? CheckoutSubmodules.DISABLED;
   }
 }
